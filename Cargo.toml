@@ -1,0 +1,21 @@
+[package]
+name = "concurrent_bst"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+strip = "symbols"
+
+[profile.test]
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+strip = "symbols"
+
+[dependencies]
+ed25519-dalek = { version = "2.1.1" }
+rand = { version = "0.8.5" }
+tokio = { version = "1.43.0", features = ["full"] }
