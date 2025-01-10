@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use ed25519_dalek::{ed25519::SignatureBytes, SecretKey};
 use rand::random;
 use tokio::task::JoinHandle;
-use super::*;
+use concurrent_bst::{ConcurrentBST, ShouldUpdate};
 
 pub(crate) fn timestamp() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_millis() as u64

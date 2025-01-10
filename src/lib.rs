@@ -1,5 +1,3 @@
-mod tests;
-
 use std::{hash::{DefaultHasher, Hash, Hasher}, sync::{Mutex, RwLock}};
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
