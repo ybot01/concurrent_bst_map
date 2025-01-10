@@ -10,13 +10,13 @@ struct ConcurrentBSTNode<K,V>{
 #[derive(Debug)]
 struct ConcurrentBSTInternal<K,V>{
     no_elements: Mutex<usize>,
+    root_node_key: Mutex<Option<K>>,
     list: Vec<Mutex<Option<ConcurrentBSTNode<K,V>>>>
 }
 
 #[derive(Debug)]
 pub struct ConcurrentBST<K,V>{
-    inner: RwLock<ConcurrentBSTInternal<K,V>>,
-    root_node_key: Mutex<Option<K>>
+    inner: RwLock<ConcurrentBSTInternal<K,V>>
 }
 
 pub trait ShouldUpdate{
@@ -36,9 +36,9 @@ impl<K: Copy + Ord + Eq + Hash, V: ShouldUpdate + Copy> ConcurrentBST<K,V>{
         Self{
             inner: RwLock::new(ConcurrentBSTInternal{
                 no_elements: Mutex::new(0),
+                root_node_key: Mutex::new(None),
                 list: Vec::from([const {Mutex::new(None)}; 1024])
             }),
-            root_node_key: Mutex::new(None)
         }
     }
 
@@ -47,27 +47,27 @@ impl<K: Copy + Ord + Eq + Hash, V: ShouldUpdate + Copy> ConcurrentBST<K,V>{
         key.hash(&mut hasher);
         (hasher.finish() % (max_value as u64)) as usize
     }
-
+    
+    
+    
     pub fn add_or_update(&self, key: K, value: V) -> bool{
         let inserted = self.inner.read().map(|rw_lock| {
             let inner_function = |start_key| {
                 let list_length = rw_lock.list.len();
                 let mut inserted = None;
                 let mut current_key = start_key;
-                let mut current_key_hash = (current_key, Self::get_key_hash(current_key, list_length));
+                let mut current_key_hash;
                 let mut break_while_loop;
                 let mut counter;
                 loop {
                     match inserted {
                         Some(result) => return result,
                         None => {
-                            if current_key_hash.0 != current_key{
-                                current_key_hash = (current_key,  Self::get_key_hash(current_key, list_length));
-                            }
+                            current_key_hash = Self::get_key_hash(current_key, list_length);
                             break_while_loop = false;
                             counter = 0;
                             while !break_while_loop && inserted.is_none() {
-                                rw_lock.list[(current_key_hash.1 + counter) % list_length].lock().map(|mut mutex_lock| {
+                                rw_lock.list[(current_key_hash + counter) % list_length].lock().map(|mut mutex_lock| {
                                     match *mutex_lock {
                                         None => {
                                             rw_lock.no_elements.lock().map(|mut no_elements| {
@@ -115,17 +115,18 @@ impl<K: Copy + Ord + Eq + Hash, V: ShouldUpdate + Copy> ConcurrentBST<K,V>{
                     }
                 }
             };
-
-            let mut inner_function_result = None;
-            let root_node_key = *self.root_node_key.lock().unwrap().get_or_insert_with(|| {
-                inner_function_result = Some(inner_function(key));
+            
+            let mut insert_result = None;
+            
+            let root_node_key = *rw_lock.root_node_key.lock().unwrap().get_or_insert_with(|| {
+                insert_result = Some(inner_function(key));
                 key
             });
-
-            inner_function_result.unwrap_or(inner_function(root_node_key))
-
+            
+            insert_result.unwrap_or(inner_function(root_node_key))
+            
         }).unwrap();
-
+        
         match inserted{
             InsertStatus::Updated(was_updated) => was_updated,
             InsertStatus::Inserted => true,
@@ -144,7 +145,7 @@ impl<K: Copy + Ord + Eq + Hash, V: ShouldUpdate + Copy> ConcurrentBST<K,V>{
                                     Some(node) => {
                                         key_hash = Self::get_key_hash(node.key, new_vec.len());
                                         counter = 0;
-                                        while new_vec[(key_hash + counter) % new_vec.len()].lock().unwrap().is_some() {counter += 1}
+                                        while new_vec[(key_hash + counter) % new_vec.len()].lock().unwrap().is_some() { counter += 1 }
                                         *new_vec[(key_hash + counter) % new_vec.len()].lock().unwrap() = Some(node);
                                     }
                                 }
@@ -160,11 +161,74 @@ impl<K: Copy + Ord + Eq + Hash, V: ShouldUpdate + Copy> ConcurrentBST<K,V>{
     }
 
     pub fn remove(&self, key: K){
-
+        self.remove_if(key, |_| true);
     }
 
-    pub fn remove_if(&self, key: K, should_remove: impl FnOnce(&V) -> bool) -> bool{
-        true
+    pub fn remove_if(&self, key: K, should_remove: impl FnOnce(&V) -> bool){
+        self.inner.read().map(|rw_lock| {
+            let current_key = match *rw_lock.root_node_key.lock().unwrap(){
+                Some(result) => result,
+                None => return
+            };
+            //todo
+        }).unwrap();
+        let inner_function = |found_parent_node| self.inner.read().map(|rw_lock| {
+            let list_length = rw_lock.list.len();
+            let mut current_key_hash;
+            let mut counter;
+            let mut continue_loop;
+            loop{
+                match found_parent_node {
+                    Some(possible_parent_node) => { 
+                        match possible_parent_node{
+                            None => return,
+                            Some(parent_node) => {
+                                if parent_node == key{
+                                    //root node
+                                    
+                                }
+                                else{
+                                    
+                                }
+                            }
+                        }
+                    }
+                    None => {
+                        continue_loop = true;
+                        counter = 0;
+                        current_key_hash = Self::get_key_hash(current_key, list_length);
+                        while continue_loop && found_parent_node.is_none() {
+                            rw_lock.list[(current_key_hash + counter) % list_length].lock().map(|mutex_lock| {
+                                match *mutex_lock {
+                                    None => found_parent_node = Some(None),
+                                    Some(mut node) => {
+                                        if node.key == current_key {
+                                            //dont test for if current key == key as this can only happen if at root node which is already tested for
+                                            match &mut node.child_nodes[if key < current_key {0} else {1}] {
+                                                None => found_parent_node = Some(None),
+                                                Some((locked, child_key)) => if !*locked {
+                                                    if *child_key == key {
+                                                        //lock so cant edit the child node key or any value below in tree without having to lock with mutex
+                                                        //doesnt matter if someone else edits this node value as key will remain the same
+                                                        *locked = true;
+                                                        found_parent_node = Some(Some(current_key));
+                                                    }
+                                                    else {
+                                                        continue_loop = false;
+                                                        current_key = *child_key;
+                                                    }
+                                                }
+                                            }
+                                        } 
+                                        else { counter += 1 }
+                                    }
+                                }
+                            }).unwrap();
+                        }
+                    }
+                }
+            }
+        }).unwrap();
     }
 
 }
