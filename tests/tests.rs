@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use ed25519_dalek::{ed25519::SignatureBytes, SecretKey};
 use rand::random;
 use tokio::task::JoinHandle;
-use concurrent_bst::ConcurrentBST;
+use concurrent_bst::{ConcurrentBST, ShouldUpdate};
 
 pub(crate) fn timestamp() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_millis() as u64
@@ -28,15 +28,18 @@ impl User{
     }
 }
 
-fn update_fn(current_user: &User, new_user: &User) -> bool{
-    new_user.update_counter > current_user.update_counter
+impl ShouldUpdate for User{
+    fn should_update_to(&self, other: &Self) -> bool {
+        other.update_counter > self.update_counter
+    }
 }
+
 
 #[test]
 fn insert_and_get_test() {
     let bst = ConcurrentBST::<SecretKey, User>::new();
     let user = User::random();
-    bst.add_or_update(user.user_id, user, update_fn);
+    bst.add_or_update(user.user_id, user);
     assert!(bst.get(user.user_id).is_some_and(|x| x == user));
 }
 
@@ -44,11 +47,11 @@ fn insert_and_get_test() {
 fn test() {
     let bst = ConcurrentBST::<SecretKey, User>::new();
     let mut user = User::random();
-    assert!(bst.add_or_update(user.user_id, user, update_fn));
+    assert!(bst.add_or_update(user.user_id, user));
     user.update_counter += 1;
-    assert!(bst.add_or_update(user.user_id, user, update_fn));
+    assert!(bst.add_or_update(user.user_id, user));
     user.update_counter -= 1;
-    assert!(!bst.add_or_update(user.user_id, user, update_fn));
+    assert!(!bst.add_or_update(user.user_id, user));
 }
 
 #[test]
@@ -59,7 +62,7 @@ fn bench(){
     let total = 1000000;
     let start_time = SystemTime::now();
     for _ in 0..total{
-        if bst.add_or_update(user.user_id, user, update_fn) {true_count += 1};
+        if bst.add_or_update(user.user_id, user) {true_count += 1};
         user.update_counter += 1;
     }
     println!("{}", total as f64 / SystemTime::now().duration_since(start_time).unwrap().as_secs_f64());
@@ -86,7 +89,7 @@ fn bench_multi_thread(){
                     for _ in 0..TOTAL_PER_THREAD {random_users.push(User::random())}
                     let start_time = SystemTime::now();
                     for user in random_users{
-                        if GLOBAL_BST.add_or_update(user.user_id, user, update_fn){
+                        if GLOBAL_BST.add_or_update(user.user_id, user){
                             TRUE_COUNT.fetch_add(1, Ordering::Relaxed);
                         }
                     }
