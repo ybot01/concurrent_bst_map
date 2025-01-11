@@ -1,5 +1,4 @@
 use std::{hash::{DefaultHasher, Hash, Hasher}, sync::{Mutex, RwLock}};
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 struct ConcurrentBSTNode<K,V>{
