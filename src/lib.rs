@@ -52,8 +52,8 @@ impl<'a, K,V> Deref for LockGuard<'a, K,V>{
 
     fn deref(&self) -> &Self::Target {
         match self{
-            LockGuard::Read(lock) => &**lock,
-            LockGuard::Write(lock) => &**lock 
+            LockGuard::Read(lock) => lock,
+            LockGuard::Write(lock) => lock 
         }
     }
 }
