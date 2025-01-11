@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use ed25519_dalek::{ed25519::SignatureBytes, SecretKey};
 use rand::random;
 use tokio::task::JoinHandle;
-use concurrent_bst::{ConcurrentBST, ShouldUpdate};
+use concurrent_bst::ConcurrentBST;
 
 pub(crate) fn timestamp() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_millis() as u64
@@ -15,12 +15,6 @@ pub(crate) struct User{
     sock_addr: SocketAddrV6,
     update_counter: u64,
     signature: SignatureBytes
-}
-
-impl ShouldUpdate for User{
-    fn should_update_to(&self, other: &Self) -> bool {
-        other.update_counter > self.update_counter
-    }
 }
 
 impl User{
@@ -36,6 +30,14 @@ impl User{
 
 fn update_fn(current_user: &User, new_user: &User) -> bool{
     new_user.update_counter > current_user.update_counter
+}
+
+#[test]
+fn insert_and_get_test() {
+    let bst = ConcurrentBST::<SecretKey, User>::new();
+    let user = User::random();
+    bst.add_or_update(user.user_id, user, update_fn);
+    assert!(bst.get(user.user_id).is_some_and(|x| x == user));
 }
 
 #[test]
