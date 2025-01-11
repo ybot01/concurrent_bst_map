@@ -38,7 +38,7 @@ impl User{
 fn test() {
     let bst = ConcurrentBST::<SecretKey, User>::new();
     let mut user = User::random();
-    assert!(bst.add_or_update(user.user_id, user));
+    assert!(bst.add_or_update(user.user_id, user, |x,y| y.update_counter > x.update_counter));
     user.update_counter += 1;
     assert!(bst.add_or_update(user.user_id, user));
     user.update_counter -= 1;
