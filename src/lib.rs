@@ -19,10 +19,6 @@ pub struct ConcurrentBST<K,V>{
     inner: RwLock<ConcurrentBSTInternal<K,V>>
 }
 
-pub trait ShouldUpdate{
-    fn should_update_to(&self, other: &Self) -> bool;
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 enum InsertStatus{
     Updated(bool),
@@ -30,7 +26,7 @@ enum InsertStatus{
     RebaseRequired
 }
 
-impl<K: Copy + Ord + Eq + Hash, V: ShouldUpdate + Copy> ConcurrentBST<K,V>{
+impl<K: Copy + Ord + Eq + Hash, V: Copy> ConcurrentBST<K,V>{
 
     pub fn new() -> Self{
         Self{
@@ -38,7 +34,7 @@ impl<K: Copy + Ord + Eq + Hash, V: ShouldUpdate + Copy> ConcurrentBST<K,V>{
                 no_elements: Mutex::new(0),
                 root_node_key: Mutex::new(None),
                 list: Vec::from([const {Mutex::new(None)}; 1024])
-            }),
+            })
         }
     }
 
@@ -50,7 +46,7 @@ impl<K: Copy + Ord + Eq + Hash, V: ShouldUpdate + Copy> ConcurrentBST<K,V>{
     
     
     
-    pub fn add_or_update(&self, key: K, value: V) -> bool{
+    pub fn add_or_update(&self, key: K, value: V, should_update_value: impl Fn(&V, &V) -> bool) -> bool{
         let inserted = self.inner.read().map(|rw_lock| {
             let inner_function = |start_key| {
                 let list_length = rw_lock.list.len();
@@ -89,7 +85,7 @@ impl<K: Copy + Ord + Eq + Hash, V: ShouldUpdate + Copy> ConcurrentBST<K,V>{
                                             if node.key == current_key {
                                                 if current_key == key{
                                                     inserted = Some(InsertStatus::Updated(
-                                                        if node.value.should_update_to(&value){
+                                                        if should_update_value(&node.value, &value){
                                                             node.value = value;
                                                             true
                                                         }
@@ -135,7 +131,8 @@ impl<K: Copy + Ord + Eq + Hash, V: ShouldUpdate + Copy> ConcurrentBST<K,V>{
                 self.inner.write().map(|mut rw_lock| {
                     if *rw_lock.no_elements.lock().unwrap() >= (rw_lock.list.len() / 2) {
                         let mut new_vec = Vec::<Mutex<Option<ConcurrentBSTNode<K, V>>>>::new();
-                        for _ in 0..(rw_lock.list.len() * 2) { new_vec.push(Mutex::new(None)) }
+                        let new_vec_length = rw_lock.list.len() * 2;
+                        for _ in 0..new_vec_length { new_vec.push(Mutex::new(None)) }
                         let mut key_hash = 0;
                         let mut counter = 0;
                         for possible_node in rw_lock.list.iter() {
@@ -143,10 +140,10 @@ impl<K: Copy + Ord + Eq + Hash, V: ShouldUpdate + Copy> ConcurrentBST<K,V>{
                                 match *mutex_lock {
                                     None => (),
                                     Some(node) => {
-                                        key_hash = Self::get_key_hash(node.key, new_vec.len());
+                                        key_hash = Self::get_key_hash(node.key, new_vec_length);
                                         counter = 0;
-                                        while new_vec[(key_hash + counter) % new_vec.len()].lock().unwrap().is_some() { counter += 1 }
-                                        *new_vec[(key_hash + counter) % new_vec.len()].lock().unwrap() = Some(node);
+                                        while new_vec[(key_hash + counter) % new_vec_length].lock().unwrap().is_some() { counter += 1 }
+                                        *new_vec[(key_hash + counter) % new_vec_length].lock().unwrap() = Some(node);
                                     }
                                 }
                             }).unwrap();
@@ -155,7 +152,7 @@ impl<K: Copy + Ord + Eq + Hash, V: ShouldUpdate + Copy> ConcurrentBST<K,V>{
                     }
                 }).unwrap();
 
-                self.add_or_update(key, value)
+                self.add_or_update(key, value, should_update_value)
             }
         }
     }
