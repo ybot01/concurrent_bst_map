@@ -34,15 +34,19 @@ impl User{
     }
 }
 
+fn update_fn(current_user: &User, new_user: &User) -> bool{
+    new_user.update_counter > current_user.update_counter
+}
+
 #[test]
 fn test() {
     let bst = ConcurrentBST::<SecretKey, User>::new();
     let mut user = User::random();
-    assert!(bst.add_or_update(user.user_id, user, |x,y| y.update_counter > x.update_counter));
+    assert!(bst.add_or_update(user.user_id, user, update_fn));
     user.update_counter += 1;
-    assert!(bst.add_or_update(user.user_id, user));
+    assert!(bst.add_or_update(user.user_id, user, update_fn));
     user.update_counter -= 1;
-    assert!(!bst.add_or_update(user.user_id, user));
+    assert!(!bst.add_or_update(user.user_id, user, update_fn));
 }
 
 #[test]
@@ -53,7 +57,7 @@ fn bench(){
     let total = 1000000;
     let start_time = SystemTime::now();
     for _ in 0..total{
-        if bst.add_or_update(user.user_id, user) {true_count += 1};
+        if bst.add_or_update(user.user_id, user, update_fn) {true_count += 1};
         user.update_counter += 1;
     }
     println!("{}", total as f64 / SystemTime::now().duration_since(start_time).unwrap().as_secs_f64());
@@ -80,7 +84,7 @@ fn bench_multi_thread(){
                     for _ in 0..TOTAL_PER_THREAD {random_users.push(User::random())}
                     let start_time = SystemTime::now();
                     for user in random_users{
-                        if GLOBAL_BST.add_or_update(user.user_id, user){
+                        if GLOBAL_BST.add_or_update(user.user_id, user, update_fn){
                             TRUE_COUNT.fetch_add(1, Ordering::Relaxed);
                         }
                     }
