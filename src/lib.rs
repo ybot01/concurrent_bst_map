@@ -172,7 +172,7 @@ impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
                         self.inner.write().map(|mut rw_lock| {
                             //only keep the write lock if required else go back to read lock
                             rw_lock.root_node_key.get_or_insert_with(|| {
-                                insert_result = Some(inner_function(key, LockGuard::Write(rw_lock)));
+                                insert_result.insert(inner_function(key, LockGuard::Write(rw_lock)));
                                 key
                             });
                         }).unwrap();
