@@ -346,7 +346,21 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
         }
     }
     
-    fn remove_if(&self, key: K, should_remove: impl Fn(&V) -> bool){
+    fn remove_if(&self, key: K, should_remove: impl Fn(&V) -> bool, write_step: bool){
+        let index = if key < self.key {0} else {1};
+        if write_step{
+            self.child_nodes[index].write().map(|write_lock| {
+                //todo
+            }).unwrap()
+        }
+        else{
+            self.child_nodes[index].read().map(|read_lock| {
+                match &*read_lock{
+                    None => (),
+                    Some(child_node) => child_node.remove_if(key, should_remove, child_node.key == key)
+                }
+            }).unwrap()
+        }
         
     }
 }
@@ -375,6 +389,6 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
     }
 
     pub fn remove_if(&self, key: K, should_remove: impl Fn(&V) -> bool){
-        
+        self.inner.read().unwrap().remove_if(key, should_remove, false)
     }
 }
