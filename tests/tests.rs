@@ -1,9 +1,10 @@
-use std::{net::{Ipv6Addr, SocketAddrV6}, sync::LazyLock, time::{Duration, SystemTime, UNIX_EPOCH}};
+use std::{net::{Ipv6Addr, SocketAddrV6}, time::{Duration, SystemTime, UNIX_EPOCH}};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use ed25519_dalek::{ed25519::SignatureBytes, SecretKey};
 use rand::random;
 use tokio::task::JoinHandle;
-use concurrent_bst::{ConcurrentBST, ShouldUpdate};
+use concurrent_bst::alternative_idea::{ConcurrentBST, ShouldUpdate};
+//use concurrent_bst::{ConcurrentBST, ShouldUpdate};
 
 pub(crate) fn timestamp() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_millis() as u64
@@ -18,7 +19,15 @@ pub(crate) struct User{
 }
 
 impl User{
-    pub fn random() -> Self{
+    
+    const DEFAULT: Self = Self{
+        user_id: [0;32],
+        sock_addr: SocketAddrV6::new(Ipv6Addr::LOCALHOST, 0, 0, 0),
+        update_counter: 0,
+        signature: [0;64]
+    };
+    
+    fn random() -> Self{
         Self{
             user_id: random(),
             sock_addr: SocketAddrV6::new(Ipv6Addr::from(random::<[u8;16]>()), random(), 0, 0),
@@ -34,18 +43,9 @@ impl ShouldUpdate for User{
     }
 }
 
-
-#[test]
-fn insert_and_get_test() {
-    let bst = ConcurrentBST::<SecretKey, User>::new();
-    let user = User::random();
-    bst.add_or_update(user.user_id, user);
-    assert!(bst.get(user.user_id).is_some_and(|x| x == user));
-}
-
 #[test]
 fn test() {
-    let bst = ConcurrentBST::<SecretKey, User>::new();
+    let bst = ConcurrentBST::<SecretKey, User>::new([0;32], User::random());
     let mut user = User::random();
     assert!(bst.add_or_update(user.user_id, user));
     user.update_counter += 1;
@@ -55,8 +55,16 @@ fn test() {
 }
 
 #[test]
+fn insert_and_get_test() {
+    let bst = ConcurrentBST::<SecretKey, User>::new([0;32], User::random());
+    let user = User::random();
+    bst.add_or_update(user.user_id, user);
+    assert!(bst.get(user.user_id).is_some_and(|x| x == user));
+}
+
+#[test]
 fn bench(){
-    let bst = ConcurrentBST::<SecretKey, User>::new();
+    let bst = ConcurrentBST::<SecretKey, User>::new([0;32], User::random());
     let mut user = User::random();
     let mut true_count = 0;
     let total = 1000000;
@@ -69,7 +77,7 @@ fn bench(){
     assert_eq!(true_count, total);
 }
 
-static GLOBAL_BST: LazyLock<ConcurrentBST<SecretKey, User>> = LazyLock::new(ConcurrentBST::new);
+static GLOBAL_BST: ConcurrentBST<SecretKey, User> = ConcurrentBST::<SecretKey, User>::new([0;32], User::DEFAULT);
 
 static TRUE_COUNT: AtomicUsize = AtomicUsize::new(0);
 

@@ -1,7 +1,7 @@
-use std::{hash::{DefaultHasher, Hash, Hasher}, sync::{Mutex, RwLock}};
-use std::ops::Deref;
-use std::sync::{RwLockReadGuard, RwLockWriteGuard};
+/*use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{RwLockReadGuard, RwLockWriteGuard};
+use std::{hash::{DefaultHasher, Hash, Hasher}, sync::{Mutex, RwLock}};
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 struct ConcurrentBSTNode<K,V>{
@@ -59,7 +59,7 @@ impl<'a, K, V> Deref for LockGuard<'a, K, V>{
 }
 
 impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
-    
+
     pub fn new() -> Self{
         Self{
             inner: RwLock::new(ConcurrentBSTInternal{
@@ -69,15 +69,22 @@ impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
             })
         }
     }
-    
+
     fn get_key_hash(key: K, max_value: usize) -> usize{
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
         (hasher.finish() % (max_value as u64)) as usize
     }
-    
+
+    pub fn get(&self, key: K) -> Option<V>{
+        self.inner.read().map(|rw_lock| {
+            rw_lock.list[Self::get_key_hash(key, rw_lock.list.len())].lock().unwrap()
+                .iter().find(|x| x.key == key).map(|x| x.value)
+        }).unwrap()
+    }
+
     pub fn add_or_update(&self, key: K, value: V) -> bool{
-        
+
         //need to figure out how to do removals using a read lock instead of write lock for efficiency
         //example problem is if user gets the root node key and then tries to find that node
         //could be removed from the bst and replaced by different root node before can read it so will never find it
@@ -85,19 +92,20 @@ impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
         //remove and replace with new or none if no child nodes
         //if removing a none root node then only care about the nodes parent node reference to the node and everything below that so mark that as locked
         //mark as unlocked once removed
-        
+
         let inner_function = |root_node_key, lock_guard: LockGuard<K, V>| {
             let mut current_key = root_node_key;
             let mut current_key_hash;
             let list_length = lock_guard.list.len();
             let mut inserted = None;
+            let mut continue_loop;
             loop {
                 match inserted {
                     Some(result) => return result,
                     None => ()
                 }
                 current_key_hash = Self::get_key_hash(current_key, list_length);
-                let mut continue_loop = true;
+                continue_loop = true;
                 while continue_loop && inserted.is_none() {
                     lock_guard.list[current_key_hash].lock().map(|mut mutex_lock| {
                         match mutex_lock.iter().position(|x| x.key == current_key){
@@ -138,10 +146,10 @@ impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
                 }
             }
         };
-        match self.inner.read().map(|read_lock| 
+        match self.inner.read().map(|read_lock|
             read_lock.root_node_key.map(|x| inner_function(x, LockGuard::Read(read_lock)))
         ).unwrap().unwrap_or(
-            self.inner.write().map(|mut write_lock| 
+            self.inner.write().map(|mut write_lock|
                 inner_function(*write_lock.root_node_key.get_or_insert(key), LockGuard::Write(write_lock))
             ).unwrap()
         ){
@@ -167,18 +175,11 @@ impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
             }
         }
     }
-    
-    pub fn get(&self, key: K) -> Option<V>{
-        self.inner.read().map(|rw_lock| {
-            rw_lock.list[Self::get_key_hash(key, rw_lock.list.len())].lock().unwrap()
-            .iter().find(|x| x.key == key).map(|x| x.value)
-        }).unwrap()
-    }
-    
-    pub fn remove(&self, key: K){ 
+
+    pub fn remove(&self, key: K){
         self.remove_if(key, |_| true);
     }
-    
+
     pub fn remove_if(&self, key: K, should_remove: impl Fn(&V) -> bool){
         //need to find the node which has the node to remove as one of its child node references
         //(if reach an empty reference then exit, key is not in map)
@@ -194,35 +195,184 @@ impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
         //else if only left child node set root node to left node
         //else if no child nodes then set root node to none
 
-        let inner_function = |root_node_key, lock_guard: LockGuard<K, V>| {
+
+        if !self.inner.read().map(|read_lock| {
+            let root_node_key = match read_lock.root_node_key {
+                None => return true,
+                Some(root_node_key) => {
+                    if root_node_key == key {return false}
+                    else {root_node_key}
+                }
+            };
+            //first find parent node
+
             let mut current_key = root_node_key;
             let mut current_key_hash;
-            let list_length = lock_guard.list.len();
-            let mut removed = false;
-            
-        };
-        
-        let removed = self.inner.read().map(|read_lock| {
-            match read_lock.root_node_key{
-                None => true,
-                Some(root_node_key) => {
-                    if root_node_key == key{
-                        //need to get write lock
-                        false
-                    }
-                    else{
-                        inner_function(root_node_key, LockGuard::Read(read_lock));
-                        true
-                    }
+            let list_length = read_lock.list.len();
+            let mut cni;
+            let mut parent_node_internal = None;
+            let mut continue_loop;
+            let parent_node = loop{
+                match parent_node_internal{
+                    Some(result) => break result,
+                    None => ()
+                }
+                current_key_hash = Self::get_key_hash(current_key, list_length);
+                continue_loop = true;
+                cni = if key < current_key {0} else {1};
+                while continue_loop && !parent_node_internal.is_none() {
+                    read_lock.list[current_key_hash].lock().map(|mut mutex_lock| {
+                        match mutex_lock.iter().position(|x| x.key == current_key){
+                            Some(index) => {
+                                match &mut mutex_lock[index].child_nodes[cni]{
+                                    Some((locked, child_key)) => if !*locked{
+
+                                    }
+                                    None => {
+                                        //item not here so mark removed
+                                        parent_node_internal = Some(None);
+                                    }
+                                }
+                            }
+                            None => ()
+                        }
+                        while (counter < mutex_lock.len()) && (mutex_lock[counter].key != current_key) {counter += 1}
+                        if counter < mutex_lock.len() {
+                            match &mut mutex_lock[counter].child_nodes[cni]{
+                                None => {
+
+                                },
+                                Some((locked, child_key)) => if !*locked{
+                                    if *child_key == key{
+                                        *locked = true;
+                                        parent_node_internal = Some(Some(current_key));
+                                    }
+                                    else {
+                                        current_key = *child_key;
+                                        continue_loop = false;
+                                    }
+                                }
+                            }
+                        }
+                    }).unwrap();
                 }
             }
-        }).unwrap();
-        
-        if !removed{
+            true
+        }).unwrap(){
             self.inner.write().map(|write_lock| {
-                inner_function(key, LockGuard::Write(write_lock));
+                //todo
             }).unwrap();
         }
     }
+
+}*/
+
+pub mod alternative_idea{
+    use std::sync::RwLock;
+
     
+
+    #[derive(Debug)]
+    struct ConcurrentBSTNode<K,V>{
+        key: K,
+        value: V,
+        child_nodes: [RwLock<Option<Box<ConcurrentBSTNode<K,V>>>>; 2]
+    }
+
+    pub trait ShouldUpdate {
+        fn should_update_to(&self, other: &Self) -> bool;
+    }
+
+    impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
+
+        const fn new(key: K, value: V) -> Self{
+            Self{
+                key,
+                value,
+                child_nodes: [const { RwLock::new(None) }; 2]
+            }
+        }
+        
+        fn get(&self, key: K) -> Option<V>{
+            self.child_nodes[if key < self.key {0} else {1}].read().map(|read_lock| {
+                match &*read_lock{
+                    None => None,
+                    Some(child_node) => { 
+                        if child_node.key == key {Some(child_node.value)}
+                        else {child_node.get(key)}
+                    }
+                }
+            }).unwrap()
+        }
+        
+        fn add_or_update(&self, key: K, value: V) -> bool{
+            let index = if key < self.key {0} else {1};
+            let mut insert_status = None;
+            loop{
+                self.child_nodes[index].read().map(|read_lock| {
+                    match &*read_lock{
+                        None => (),
+                        Some(child_node) => if child_node.key != key {insert_status = Some(child_node.add_or_update(key, value))}
+                    }
+                }).unwrap();
+                match insert_status{
+                    Some(result) => return result,
+                    None => ()
+                }
+                self.child_nodes[index].write().map(|mut write_lock| {
+                    match &mut *write_lock{
+                        None => {
+                            //insert
+                            *write_lock = Some(Box::new(ConcurrentBSTNode::new(key, value)));
+                            insert_status = Some(true);
+                        }
+                        Some(child_node) => {
+                            if child_node.key == key{
+                                //update
+                                insert_status = Some(
+                                    if child_node.value.should_update_to(&value){
+                                        child_node.value = value;
+                                        true
+                                    }
+                                    else {false}
+                                );
+                            }
+                            //if a different key than before then retry the read lock
+                        }
+                    }
+
+                }).unwrap();
+                match insert_status{
+                    Some(result) => return result,
+                    None => ()
+                }
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct ConcurrentBST<K, V>{
+        inner: RwLock<ConcurrentBSTNode<K, V>>
+    }
+
+    impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
+
+        pub const fn new(dummy_key: K, dummy_value: V) -> Self{
+            Self {inner: RwLock::new(ConcurrentBSTNode::new(dummy_key, dummy_value))}
+        }
+
+        pub fn get(&self, key: K) -> Option<V>{
+            self.inner.read().unwrap().get(key)
+        }
+        
+        pub fn add_or_update(&self, key: K, value: V) -> bool{
+            self.inner.read().unwrap().add_or_update(key, value)
+        }
+        
+        /*pub fn get(&self, key: K) -> Option<V>{
+            
+        }*/
+    }
+
+
 }
