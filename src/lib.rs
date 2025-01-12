@@ -1,6 +1,4 @@
 use std::{hash::{DefaultHasher, Hash, Hasher}, sync::{Mutex, RwLock}};
-use std::ops::Deref;
-use std::sync::{RwLockReadGuard, RwLockWriteGuard};
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
 struct ConcurrentBSTNode<K,V>{
@@ -42,22 +40,6 @@ enum InsertStatus{
     SizeIncreaseRequired
 }
 
-enum LockGuard<'a, K, V> {
-    Read(RwLockReadGuard<'a, ConcurrentBSTInternal<K, V>>),
-    Write(RwLockWriteGuard<'a, ConcurrentBSTInternal<K, V>>)
-}
-
-impl<'a, K,V> Deref for LockGuard<'a, K,V>{
-    type Target = ConcurrentBSTInternal<K, V>;
-    
-    fn deref(&self) -> &Self::Target {
-        match self{
-            LockGuard::Read(lock) => lock,
-            LockGuard::Write(lock) => lock 
-        }
-    }
-}
-
 impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
     
     pub fn new() -> Self{
@@ -80,45 +62,45 @@ impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
         
         match self.inner.read().map(|rw_lock| {
             
-            let inner_function = |root_node_key| {
-                let mut current_key = root_node_key;
-                let mut current_key_hash;
-                let list_length = rw_lock.list.len();
-                let mut inserted = None;
-                loop {
-                    match inserted {
-                        Some(result) => return result,
-                        None => {
-                            current_key_hash = Self::get_key_hash(current_key, list_length);
-                            let mut continue_loop = true;
-                            while continue_loop && inserted.is_none() {
-                                rw_lock.list[current_key_hash].lock().map(|mut mutex_lock| {
-                                    match mutex_lock.iter().position(|x| x.key == current_key){
-                                        Some(index) => {
-                                            if current_key == key {
-                                                //update
-                                                inserted = Some(InsertStatus::Updated(
-                                                    if mutex_lock[index].value.should_update_to(&value){
-                                                        mutex_lock[index].value = value;
-                                                        true
-                                                    }
-                                                    else {false}
-                                                ));
-                                            }
-                                            else {
-                                                //go to next child node if not locked
-                                                //if locked exit lock and keep reacquiring until not locked
-                                                match *mutex_lock[index].child_nodes[if key < current_key {0} else {1}].get_or_insert((false, key)) {
-                                                    (true, _) => (),
-                                                    (false, child_key) => {
-                                                        continue_loop = false;
-                                                        current_key = child_key;
-                                                    },
+            let mut current_key = *rw_lock.root_node_key.lock().unwrap().get_or_insert(key);
+            let mut current_key_hash;
+            let list_length = rw_lock.list.len();
+            let mut inserted = None;
+            loop {
+                match inserted {
+                    Some(result) => return result,
+                    None => {
+                        current_key_hash = Self::get_key_hash(current_key, list_length);
+                        let mut continue_loop = true;
+                        while continue_loop && inserted.is_none() {
+                            rw_lock.list[current_key_hash].lock().map(|mut mutex_lock| {
+                                match mutex_lock.iter().position(|x| x.key == current_key){
+                                    Some(index) => {
+                                        if current_key == key {
+                                            //update
+                                            inserted = Some(InsertStatus::Updated(
+                                                if mutex_lock[index].value.should_update_to(&value){
+                                                    mutex_lock[index].value = value;
+                                                    true
                                                 }
+                                                else {false}
+                                            ));
+                                        }
+                                        else {
+                                            //go to next child node if not locked
+                                            //if locked exit lock and keep reacquiring until not locked
+                                            match *mutex_lock[index].child_nodes[if key < current_key {0} else {1}].get_or_insert((false, key)) {
+                                                (true, _) => (),
+                                                (false, child_key) => {
+                                                    continue_loop = false;
+                                                    current_key = child_key;
+                                                },
                                             }
                                         }
-                                        None => {
-                                            //not found, insert if enough room
+                                    }
+                                    None => {
+                                        //not found
+                                        if current_key == key{
                                             rw_lock.no_elements.lock().map(|mut no_elements| {
                                                 inserted = Some(
                                                     if *no_elements >= list_length {InsertStatus::SizeIncreaseRequired}
@@ -131,22 +113,12 @@ impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
                                             }).unwrap();
                                         }
                                     }
-                                }).unwrap();
-                            }
+                                }
+                            }).unwrap();
                         }
                     }
                 }
-            };
-            
-            let mut insert_result = None;
-            
-            let root_node_key = *rw_lock.root_node_key.lock().unwrap().get_or_insert_with(|| {
-                insert_result = Some(inner_function(key));
-                key
-            });
-            
-            insert_result.unwrap_or(inner_function(root_node_key))
-            
+            }
         }).unwrap(){
             InsertStatus::Updated(was_updated) => was_updated,
             InsertStatus::Inserted => true,
