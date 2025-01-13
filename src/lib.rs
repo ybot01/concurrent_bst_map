@@ -270,10 +270,31 @@ impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
 use std::sync::RwLock;
 
 #[derive(Debug)]
+struct ChildNode<K,V>(RwLock<Option<Box<ConcurrentBSTNode<K,V>>>>);
+
+impl<K,V> ChildNode<K,V>{
+    const fn new() -> Self{
+        Self(RwLock::new(None))
+    }
+
+    fn get(&self, key: K) -> Option<V>{
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                None => None,
+                Some(node) => {
+                    if node.key == key {Some(node.value)}
+                    else {child_node.get(key)}
+                }
+            }
+        }).unwrap()
+    }
+}
+
+#[derive(Debug)]
 struct ConcurrentBSTNode<K,V>{
     key: K,
     value: V,
-    child_nodes: [RwLock<Option<Box<ConcurrentBSTNode<K,V>>>>; 2]
+    child_nodes: [ChildNode<K,V>; 2]
 }
 
 pub trait ShouldUpdate {
@@ -286,7 +307,7 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
         Self{
             key,
             value,
-            child_nodes: [const { RwLock::new(None) }; 2]
+            child_nodes: [const {ChildNode::new()}; 2]
         }
     }
     
@@ -405,22 +426,20 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
 }
 
 #[derive(Debug)]
-pub struct ConcurrentBST<K, V>{
-    inner: RwLock<ConcurrentBSTNode<K, V>>
-}
+pub struct ConcurrentBST<K, V>(RwLock<ConcurrentBSTNode<K,V>>);
 
 impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
 
     pub const fn new(dummy_key: K, dummy_value: V) -> Self{
-        Self {inner: RwLock::new(ConcurrentBSTNode::new(dummy_key, dummy_value))}
+        Self(RwLock::new(ConcurrentBSTNode::new(dummy_key, dummy_value)))
     }
 
     pub fn get(&self, key: K) -> Option<V>{
-        self.inner.read().unwrap().get(key)
+        self.0.read().unwrap().get(key)
     }
     
     pub fn add_or_update(&self, key: K, value: V) -> bool{
-        self.inner.read().unwrap().add_or_update(key, value)
+        self.0.read().unwrap().add_or_update(key, value)
     }
     
     pub fn remove(&self, key: K){
@@ -428,6 +447,6 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
     }
 
     pub fn remove_if(&self, key: K, should_remove: &impl Fn(&V) -> bool){
-        self.inner.read().unwrap().remove_if(key, should_remove)
+        self.0.read().unwrap().remove_if(key, should_remove)
     }
 }
