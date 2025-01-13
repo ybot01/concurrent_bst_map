@@ -33,6 +33,14 @@ impl ShouldUpdate for User{
         other.update_counter > self.update_counter
     }
 }
+#[test]
+fn remove_test(){
+    let bst = ConcurrentBST::<SecretKey, User>::new();
+    let user = User::random();
+    assert!(bst.add_or_update(user.user_id, user));
+    bst.remove(user.user_id);
+    assert!(bst.get(user.user_id).is_none())
+}
 
 #[test]
 fn test() {
@@ -104,7 +112,6 @@ fn bench_multi_thread(){
                 }
             }
             println!("{}", (NO_THREADS*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
-            //test how many have been filled, is it = no threads * total per thread?
-            println!("{:?}", TRUE_COUNT);
+            assert_eq!(TRUE_COUNT.load(Ordering::Relaxed), NO_THREADS*TOTAL_PER_THREAD)
         });
 }
