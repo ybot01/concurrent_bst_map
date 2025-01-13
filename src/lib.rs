@@ -346,22 +346,37 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
         }
     }
     
-    fn remove_if(&self, key: K, should_remove: impl Fn(&V) -> bool, write_step: bool){
+    fn remove_if(&self, key: K, should_remove: &impl Fn(&V) -> bool){
         let index = if key < self.key {0} else {1};
-        if write_step{
-            self.child_nodes[index].write().map(|write_lock| {
-                //todo
-            }).unwrap()
-        }
-        else{
+        let mut removed = false;
+        loop{
             self.child_nodes[index].read().map(|read_lock| {
                 match &*read_lock{
-                    None => (),
-                    Some(child_node) => child_node.remove_if(key, should_remove, child_node.key == key)
+                    None => removed = true,
+                    Some(child_node) => {
+                        if child_node.key != key {
+                            removed = true;
+                            child_node.remove_if(key, should_remove);
+                        }
+                    }
                 }
-            }).unwrap()
+            }).unwrap();
+            if removed {return}
+            self.child_nodes[index].write().map(|mut write_lock| {
+                match &mut *write_lock{
+                    None => removed = true,
+                    Some(child_node) => {
+                        if child_node.key == key {
+                            //todo
+
+                            removed = true;
+                        }
+                        //if not then break write lock and go back into read lock
+                    }
+                }
+            }).unwrap();
+            if removed {return}
         }
-        
     }
 }
 
@@ -385,10 +400,10 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
     }
     
     pub fn remove(&self, key: K){
-        self.remove_if(key, |_| true)
+        self.remove_if(key, &|_| true)
     }
 
-    pub fn remove_if(&self, key: K, should_remove: impl Fn(&V) -> bool){
-        self.inner.read().unwrap().remove_if(key, should_remove, false)
+    pub fn remove_if(&self, key: K, should_remove: &impl Fn(&V) -> bool){
+        self.inner.read().unwrap().remove_if(key, should_remove)
     }
 }
