@@ -267,7 +267,7 @@ impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
 
 }*/
 
-use std::sync::{RwLock, RwLockReadGuard};
+use std::sync::RwLock;
 
 pub trait ShouldUpdate {
     fn should_update_to(&self, other: &Self) -> bool;
@@ -340,50 +340,50 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
         }
     }
     
-    fn internal_get_replacement_key_value(&self, parent_key: K, parent_value: V) -> (K,V){
-        //need to find node that has left child with no left child, delete this left child and return its key and value
-        let result = self.0.write().map(|mut write_lock| {
-            match &*write_lock {
-                None => (), //shouldnt happen
+    fn internal_get_replacement_key_value_right_child_node(&self) -> Option<(K,V)>{
+        //need to 
+        self.0.write().map(|mut write_lock| {
+            match &mut *write_lock {
+                None => None,
                 Some(node) => {
-                    if node.child_nodes.iter().all(|x| x.0.read().unwrap().is_none()){
-                        Some((node.key, node.value))
-                    }
-                    else{
-                        //todo
-                    }
+                    
                 }
             }
-        }).unwrap();
-        
+        }).unwrap()
+    }
+
+    fn internal_get_replacement_key_value_left_child_node(&self) -> Option<(K,V)>{
+        self.0.write().map(|mut write_lock| {
+            match &mut *write_lock {
+                None => None,
+                Some(node) => {
+
+                }
+            }
+        }).unwrap()
     }
     
-    fn get_replacement_key_value(&self) -> (K,V){
-        match &mut *self.0.write().unwrap(){
-            None => {
-                
-            }
-            Some(_) => {}
-        }
-        loop{
-            self.0.read().unwrap().
-            if self.0.write().map(|write_lock| {
-                match &mut *write_lock{
-                    None => None, //shouldnt happen
-                    Some(node) => {
-                        node.child_nodes[0].0.read().map(|read_lock_internal| {
-                            match &*read_lock_internal{
-                                None => Some(),
-                                Some(lcn) => {
-                                    node.child_nodes[0].get_replacement_key_value();
-                                    true
-                                }
+    fn internal_get_replacement_key_value_both_child_nodes(&self) -> Option<(K,V)>{
+        self.0.write().map(|mut write_lock| {
+            match &mut *write_lock {
+                None => None,
+                Some(node) => {
+                    match node.child_nodes[0].internal_get_replacement_key_value_both_child_nodes(){
+                        None => {
+                            //found replacement node with no left node
+                            let key_value = (node.key, node.value);
+                            //if got right node set node to be right node
+                            match node.child_nodes[1].internal_get_replacement_key_value_right_child_node(){
+                                None => *write_lock = None,
+                                Some(result) => (node.key, node.value) = result
                             }
-                        })
+                            Some(key_value)
+                        }
+                        Some(result) => Some(result)
                     }
                 }
-            }).unwrap(){return }
-        }
+            }
+        }).unwrap()
     }
     
     fn remove_if(&self, key: K, should_remove: &impl Fn(&V) -> bool){
@@ -401,42 +401,35 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
                 }
             }).unwrap() {return}
             if self.0.write().map(|mut write_lock| {
-                match 
-                    match &mut *write_lock{
-                        None => Some(true),
-                        Some(node) => {
-                            if node.key == key{
-                                if should_remove(&node.value){
-                                    match (node.child_nodes[0].0.read().unwrap().is_some(), node.child_nodes[1].0.read().unwrap().is_some()){
-                                        (false, false) => None,
-                                        (false, true) => {
-                                            
-                                        }
-                                        (true, false) => {
-                                            //as cant copy rwlocks need to go down until find leaf node
-                                            //delete that and set its parent key value to its child and repeat until reach top
-                                            
-                                        }
-                                        (true, true) => {
-                                            (node.key, node.value) = node.child_nodes[1].get_replacement_key_value();
-                                            Some(true)
-                                        }
-                                    }
+                let mut should_delete = false;
+                let result = match &mut *write_lock{
+                    None => true,
+                    Some(node) => {
+                        //if a different key than before then retry the read lock
+                        if node.key != key {false}
+                        else if should_remove(&node.value){
+                            match (node.child_nodes[0].0.read().unwrap().is_some(), node.child_nodes[1].0.read().unwrap().is_some()){
+                                (false, false) => should_delete = true,
+                                (false, true) => {
+                                    (node.key, node.value) = node.child_nodes[1].internal_get_replacement_key_value_right_child_node().unwrap();
                                 }
-                                else {Some(true)}
+                                (true, false) => {
+                                    //as cant copy rwlocks need to go down until find leaf node
+                                    //delete that and set its parent key value to its child and repeat until reach top
+                                    (node.key, node.value) = node.child_nodes[1].internal_get_replacement_key_value_left_child_node().unwrap();
+                                }
+                                (true, true) => {
+                                    (node.key, node.value) = node.child_nodes[1].internal_get_replacement_key_value_both_child_nodes().unwrap();
+                                }
                             }
-                            //if a different key than before then retry the read lock
-                            else {Some(false)}
+                            true
                         }
+                        else {true}
                     }
-                {
-                    None => {
-                        //can only get here if both child nodes are none
-                        *write_lock = None;
-                        true
-                    }
-                    Some(result) => result
-                }
+                };
+                if result && should_delete {*write_lock = None}
+                result
+                
             }).unwrap() {return}
         }
     }
