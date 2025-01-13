@@ -36,7 +36,8 @@ impl ShouldUpdate for User{
 #[test]
 fn remove_test(){
     let bst = ConcurrentBST::<SecretKey, User>::new();
-    let user = User::random();
+    let mut users = Vec::<User>::new();
+    for _ in 0..10000 {}
     assert!(bst.add_or_update(user.user_id, user));
     bst.remove(user.user_id);
     assert!(bst.get(user.user_id).is_none())

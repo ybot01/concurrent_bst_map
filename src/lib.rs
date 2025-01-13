@@ -125,7 +125,6 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
                         else {true}
                     }
                 }
-                
             }).unwrap() {return}
         }
     }
