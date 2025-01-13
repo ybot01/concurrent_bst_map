@@ -267,7 +267,7 @@ impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
 
 }*/
 
-use std::sync::RwLock;
+use std::sync::{RwLock, RwLockReadGuard};
 
 pub trait ShouldUpdate {
     fn should_update_to(&self, other: &Self) -> bool;
@@ -339,7 +339,53 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
             }
         }
     }
-
+    
+    fn internal_get_replacement_key_value(&self, parent_key: K, parent_value: V) -> (K,V){
+        //need to find node that has left child with no left child, delete this left child and return its key and value
+        let result = self.0.write().map(|mut write_lock| {
+            match &*write_lock {
+                None => (), //shouldnt happen
+                Some(node) => {
+                    if node.child_nodes.iter().all(|x| x.0.read().unwrap().is_none()){
+                        Some((node.key, node.value))
+                    }
+                    else{
+                        //todo
+                    }
+                }
+            }
+        }).unwrap();
+        
+    }
+    
+    fn get_replacement_key_value(&self) -> (K,V){
+        match &mut *self.0.write().unwrap(){
+            None => {
+                
+            }
+            Some(_) => {}
+        }
+        loop{
+            self.0.read().unwrap().
+            if self.0.write().map(|write_lock| {
+                match &mut *write_lock{
+                    None => None, //shouldnt happen
+                    Some(node) => {
+                        node.child_nodes[0].0.read().map(|read_lock_internal| {
+                            match &*read_lock_internal{
+                                None => Some(),
+                                Some(lcn) => {
+                                    node.child_nodes[0].get_replacement_key_value();
+                                    true
+                                }
+                            }
+                        })
+                    }
+                }
+            }).unwrap(){return }
+        }
+    }
+    
     fn remove_if(&self, key: K, should_remove: &impl Fn(&V) -> bool){
         loop{
             if self.0.read().map(|read_lock| {
@@ -356,23 +402,24 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
             }).unwrap() {return}
             if self.0.write().map(|mut write_lock| {
                 match 
-                    match &*write_lock{
+                    match &mut *write_lock{
                         None => Some(true),
                         Some(node) => {
                             if node.key == key{
                                 if should_remove(&node.value){
-                                    match (&*node.child_nodes[0].0.read().unwrap(), &*node.child_nodes[1].0.read().unwrap()){
-                                        (None, None) => None,
-                                        (None, Some(rcn)) => {
+                                    match (node.child_nodes[0].0.read().unwrap().is_some(), node.child_nodes[1].0.read().unwrap().is_some()){
+                                        (false, false) => None,
+                                        (false, true) => {
                                             
                                         }
-                                        (Some(lcn), None) => {
+                                        (true, false) => {
                                             //as cant copy rwlocks need to go down until find leaf node
                                             //delete that and set its parent key value to its child and repeat until reach top
                                             
                                         }
-                                        (Some(lcn), Some(rcn)) => {
-                                            
+                                        (true, true) => {
+                                            (node.key, node.value) = node.child_nodes[1].get_replacement_key_value();
+                                            Some(true)
                                         }
                                     }
                                 }
@@ -403,14 +450,14 @@ struct ConcurrentBSTNode<K,V>{
 }
 
 impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
-    const fn new(key: K, value: V) -> Self{
-        Self{
+    const fn new(key: K, value: V) -> Self {
+        Self {
             key,
             value,
-            child_nodes: [const {ChildNode::new()}; 2]
+            child_nodes: [const { ChildNode::new() }; 2]
         }
     }
-    
+
     /*fn get(&self, key: K) -> Option<V>{
         self.child_nodes[if key < self.key {0} else {1}].read().map(|read_lock| {
             match &*read_lock{
