@@ -363,35 +363,41 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
             }).unwrap();
             if removed {return}
             self.child_nodes[index].write().map(|mut write_lock| {
-                match &*write_lock{
-                    None => removed = true,
+                let child_nodes_exist = match &*write_lock{
+                    None => {
+                        removed = true;
+                        return;
+                    }
                     Some(child_node) => {
                         if child_node.key == key{
                             if should_remove(&child_node.value){
-                                //need to find next node in order to replace it
-                                match (child_node.child_nodes[0].read().unwrap().is_some(), child_node.child_nodes[1].read().unwrap().is_some()){
-                                    (false, false) => {
-                                        //if no child nodes then can simply delete it
-                                        *write_lock = None;
-                                    },
-                                    (false, true) => {
-        
-                                    },
-                                    (true, false) => {
-                                        //if only left child then replace
-                                    },
-                                    (true, true) => {
-        
-                                    }
-                                }
-                                
+                                (child_node.child_nodes[0].read().unwrap().is_some(), child_node.child_nodes[1].read().unwrap().is_some())
                             }
-                            removed = true;
+                            else{
+                                removed = true;
+                                return;
+                            }
                         }
+                        else {return}
                     }
                 };
 
-                
+                match child_nodes_exist{
+                    (false, false) => {
+                        //if no child nodes then can simply delete it
+                        *write_lock = None;
+                    },
+                    (false, true) => {
+
+                    },
+                    (true, false) => {
+                        //if only left child then replace
+                        write_lock = Some()
+                    },
+                    (true, true) => {
+
+                    }
+                }
             }).unwrap();
             if removed {return}
         }
