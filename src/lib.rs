@@ -364,10 +364,7 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
             if removed {return}
             self.child_nodes[index].write().map(|mut write_lock| {
                 match &*write_lock{
-                    None => {
-                        removed = true;
-                        return;
-                    }
+                    None => removed = true,
                     Some(child_node) => {
                         if child_node.key == key{
                             if should_remove(&child_node.value){
