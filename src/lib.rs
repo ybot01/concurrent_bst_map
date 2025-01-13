@@ -298,44 +298,44 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
     }
 
     fn add_or_update(&self, key: K, value: V) -> bool{
-        let mut insert_status = None;
         loop{
-            self.0.read().map(|read_lock| {
+            match self.0.read().map(|read_lock| {
                 match &*read_lock{
-                    None => (),
-                    Some(node) => if node.key != key {
-                        insert_status = Some(node.child_nodes[Self::get_index(key, node.key)].add_or_update(key, value))
+                    None => None,
+                    Some(node) => {
+                        if node.key != key {Some(node.child_nodes[Self::get_index(key, node.key)].add_or_update(key, value))}
+                        else {None}
                     }
                 }
-            }).unwrap();
-            match insert_status{
-                Some(result) => return result,
-                None => ()
+            }).unwrap(){
+                None => (),
+                Some(result) => return result
             }
-            self.0.write().map(|mut write_lock| {
+            match self.0.write().map(|mut write_lock| {
                 match &mut *write_lock{
                     None => {
                         //insert
                         *write_lock = Some(Box::new(ConcurrentBSTNode::new(key, value)));
-                        insert_status = Some(true);
+                        Some(true)
                     }
-                    Some(node) => if node.key == key{
-                        //update
-                        insert_status = Some(
-                            if node.value.should_update_to(&value){
-                                node.value = value;
-                                true
-                            }
-                            else {false}
-                        );
+                    Some(node) => {
+                        if node.key == key{
+                            //update
+                            Some(
+                                if node.value.should_update_to(&value){
+                                    node.value = value;
+                                    true
+                                }
+                                else {false}
+                            )
+                        }
+                        //if a different key than before then retry the read lock
+                        else {None}
                     }
-                    //if a different key than before then retry the read lock
                 }
-
-            }).unwrap();
-            match insert_status{
-                Some(result) => return result,
-                None => ()
+            }).unwrap(){
+                None => (),
+                Some(result) => return result
             }
         }
     }
@@ -364,6 +364,7 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
                             }
                             true
                         }
+                        //if a different key than before then retry the read lock
                         else {false}
                     }
                 }

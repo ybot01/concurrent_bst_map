@@ -18,14 +18,6 @@ pub(crate) struct User{
 }
 
 impl User{
-    
-    const DEFAULT: Self = Self{
-        user_id: [0;32],
-        sock_addr: SocketAddrV6::new(Ipv6Addr::LOCALHOST, 0, 0, 0),
-        update_counter: 0,
-        signature: [0;64]
-    };
-    
     fn random() -> Self{
         Self{
             user_id: random(),
@@ -44,7 +36,7 @@ impl ShouldUpdate for User{
 
 #[test]
 fn test() {
-    let bst = ConcurrentBST::<SecretKey, User>::new([0;32], User::random());
+    let bst = ConcurrentBST::<SecretKey, User>::new();
     let mut user = User::random();
     assert!(bst.add_or_update(user.user_id, user));
     user.update_counter += 1;
@@ -55,7 +47,7 @@ fn test() {
 
 #[test]
 fn insert_and_get_test() {
-    let bst = ConcurrentBST::<SecretKey, User>::new([0;32], User::random());
+    let bst = ConcurrentBST::<SecretKey, User>::new();
     let user = User::random();
     bst.add_or_update(user.user_id, user);
     assert!(bst.get(user.user_id).is_some_and(|x| x == user));
@@ -63,7 +55,7 @@ fn insert_and_get_test() {
 
 #[test]
 fn bench(){
-    let bst = ConcurrentBST::<SecretKey, User>::new([0;32], User::random());
+    let bst = ConcurrentBST::<SecretKey, User>::new();
     let mut user = User::random();
     let mut true_count = 0;
     let total = 1000000;
@@ -76,7 +68,7 @@ fn bench(){
     assert_eq!(true_count, total);
 }
 
-static GLOBAL_BST: ConcurrentBST<SecretKey, User> = ConcurrentBST::<SecretKey, User>::new([0;32], User::DEFAULT);
+static GLOBAL_BST: ConcurrentBST<SecretKey, User> = ConcurrentBST::<SecretKey, User>::new();
 
 static TRUE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
