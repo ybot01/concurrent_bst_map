@@ -355,12 +355,28 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
                 }
             }).unwrap() {return}
             if self.0.write().map(|mut write_lock| {
-                match &mut *write_lock{
+                match &*write_lock{
                     None => true,
                     Some(node) => {
                         if node.key == key{
                             if should_remove(&node.value){
-                                
+                                match (&*node.child_nodes[0].0.read().unwrap(), &*node.child_nodes[1].0.read().unwrap()){
+                                    //todo
+                                    (None, None) => {
+                                        //if no child nodes then can simply delete it
+                                        *write_lock = None;
+                                    },
+                                    (None, Some(rcn)) => {
+                                        
+                                    },
+                                    (Some(lcn), None) => {
+                                        //if only left child then replace
+                                        *write_lock = Some(lcn)
+                                    },
+                                    (Some(lcn), Some(rcn)) => {
+
+                                    }
+                                }
                             }
                             true
                         }
@@ -381,7 +397,6 @@ struct ConcurrentBSTNode<K,V>{
 }
 
 impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
-
     const fn new(key: K, value: V) -> Self{
         Self{
             key,
