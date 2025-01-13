@@ -269,24 +269,106 @@ impl<K: Copy + Ord + Eq + Hash, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
 
 use std::sync::RwLock;
 
+pub trait ShouldUpdate {
+    fn should_update_to(&self, other: &Self) -> bool;
+}
+
 #[derive(Debug)]
 struct ChildNode<K,V>(RwLock<Option<Box<ConcurrentBSTNode<K,V>>>>);
 
-impl<K,V> ChildNode<K,V>{
+impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
     const fn new() -> Self{
         Self(RwLock::new(None))
     }
 
+    fn get_index(target: K, current: K) -> usize{
+        if target < current {0} else {1}
+    }
+    
     fn get(&self, key: K) -> Option<V>{
         self.0.read().map(|read_lock| {
             match &*read_lock{
                 None => None,
                 Some(node) => {
                     if node.key == key {Some(node.value)}
-                    else {child_node.get(key)}
+                    else {node.child_nodes[Self::get_index(key, node.key)].get(key)}
                 }
             }
         }).unwrap()
+    }
+
+    fn add_or_update(&self, key: K, value: V) -> bool{
+        let mut insert_status = None;
+        loop{
+            self.0.read().map(|read_lock| {
+                match &*read_lock{
+                    None => (),
+                    Some(node) => if node.key != key {
+                        insert_status = Some(node.child_nodes[Self::get_index(key, node.key)].add_or_update(key, value))
+                    }
+                }
+            }).unwrap();
+            match insert_status{
+                Some(result) => return result,
+                None => ()
+            }
+            self.0.write().map(|mut write_lock| {
+                match &mut *write_lock{
+                    None => {
+                        //insert
+                        *write_lock = Some(Box::new(ConcurrentBSTNode::new(key, value)));
+                        insert_status = Some(true);
+                    }
+                    Some(node) => if node.key == key{
+                        //update
+                        insert_status = Some(
+                            if node.value.should_update_to(&value){
+                                node.value = value;
+                                true
+                            }
+                            else {false}
+                        );
+                    }
+                    //if a different key than before then retry the read lock
+                }
+
+            }).unwrap();
+            match insert_status{
+                Some(result) => return result,
+                None => ()
+            }
+        }
+    }
+
+    fn remove_if(&self, key: K, should_remove: &impl Fn(&V) -> bool){
+        loop{
+            if self.0.read().map(|read_lock| {
+                match &*read_lock{
+                    None => true,
+                    Some(node) => {
+                        if node.key != key {
+                            node.child_nodes[Self::get_index(key, node.key)].remove_if(key, should_remove);
+                            true
+                        }
+                        else {false}
+                    }
+                }
+            }).unwrap() {return}
+            if self.0.write().map(|mut write_lock| {
+                match &mut *write_lock{
+                    None => true,
+                    Some(node) => {
+                        if node.key == key{
+                            if should_remove(&node.value){
+                                
+                            }
+                            true
+                        }
+                        else {false}
+                    }
+                }
+            }).unwrap() {return}
+        }
     }
 }
 
@@ -295,10 +377,6 @@ struct ConcurrentBSTNode<K,V>{
     key: K,
     value: V,
     child_nodes: [ChildNode<K,V>; 2]
-}
-
-pub trait ShouldUpdate {
-    fn should_update_to(&self, other: &Self) -> bool;
 }
 
 impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
@@ -311,7 +389,7 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
         }
     }
     
-    fn get(&self, key: K) -> Option<V>{
+    /*fn get(&self, key: K) -> Option<V>{
         self.child_nodes[if key < self.key {0} else {1}].read().map(|read_lock| {
             match &*read_lock{
                 None => None,
@@ -422,16 +500,16 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
             }).unwrap();
             if removed {return}
         }
-    }
+    }*/
 }
 
 #[derive(Debug)]
-pub struct ConcurrentBST<K, V>(RwLock<ConcurrentBSTNode<K,V>>);
+pub struct ConcurrentBST<K, V>(RwLock<ChildNode<K,V>>);
 
 impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
 
-    pub const fn new(dummy_key: K, dummy_value: V) -> Self{
-        Self(RwLock::new(ConcurrentBSTNode::new(dummy_key, dummy_value)))
+    pub const fn new() -> Self{
+        Self(RwLock::new(ChildNode::new()))
     }
 
     pub fn get(&self, key: K) -> Option<V>{
