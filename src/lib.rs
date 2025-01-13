@@ -319,7 +319,9 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
                         Some(true)
                     }
                     Some(node) => {
-                        if node.key == key{
+                        //if a different key than before then retry the read lock
+                        if node.key != key {None}
+                        else{
                             //update
                             Some(
                                 if node.value.should_update_to(&value){
@@ -329,8 +331,6 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
                                 else {false}
                             )
                         }
-                        //if a different key than before then retry the read lock
-                        else {None}
                     }
                 }
             }).unwrap(){
@@ -355,34 +355,40 @@ impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
                 }
             }).unwrap() {return}
             if self.0.write().map(|mut write_lock| {
-                match &*write_lock{
-                    None => true,
-                    Some(node) => {
-                        if node.key == key{
-                            if should_remove(&node.value){
-                                match (&*node.child_nodes[0].0.read().unwrap(), &*node.child_nodes[1].0.read().unwrap()){
-                                    //todo
-                                    (None, None) => {
-                                        //if no child nodes then can simply delete it
-                                        *write_lock = None;
-                                    },
-                                    (None, Some(rcn)) => {
-                                        
-                                    },
-                                    (Some(lcn), None) => {
-                                        //if only left child then replace
-                                        *write_lock = Some(lcn)
-                                    },
-                                    (Some(lcn), Some(rcn)) => {
-
+                match 
+                    match &*write_lock{
+                        None => Some(true),
+                        Some(node) => {
+                            if node.key == key{
+                                if should_remove(&node.value){
+                                    match (&*node.child_nodes[0].0.read().unwrap(), &*node.child_nodes[1].0.read().unwrap()){
+                                        (None, None) => None,
+                                        (None, Some(rcn)) => {
+                                            
+                                        }
+                                        (Some(lcn), None) => {
+                                            //as cant copy rwlocks need to go down until find leaf node
+                                            //delete that and set its parent key value to its child and repeat until reach top
+                                            
+                                        }
+                                        (Some(lcn), Some(rcn)) => {
+                                            
+                                        }
                                     }
                                 }
+                                else {Some(true)}
                             }
-                            true
+                            //if a different key than before then retry the read lock
+                            else {Some(false)}
                         }
-                        //if a different key than before then retry the read lock
-                        else {false}
                     }
+                {
+                    None => {
+                        //can only get here if both child nodes are none
+                        *write_lock = None;
+                        true
+                    }
+                    Some(result) => result
                 }
             }).unwrap() {return}
         }
