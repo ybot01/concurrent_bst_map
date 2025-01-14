@@ -77,26 +77,26 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         else {item_1 - item_2}
     }
     
-    fn get_or_closest_internal(&self, key: K, closest: K) -> Option<K>{
+    fn get_key_or_closest_internal(&self, key: K, closest: K) -> Option<K>{
         self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
                 Some(node) => {
                     let new_closest = if Self::abs_diff(key, node.key) < Self::abs_diff(key, closest) {node.key} else {closest};
                     Some(
-                        node.child_nodes[Self::get_index(key, node.key)].get_or_closest_internal(key, new_closest).unwrap_or(new_closest)
+                        node.child_nodes[Self::get_index(key, node.key)].get_key_or_closest_internal(key, new_closest).unwrap_or(new_closest)
                     )
                 }
             }
         }).unwrap()
     }
     
-    pub fn get_or_closest(&self, key: K) -> Option<K>{
+    pub fn get_key_or_closest(&self, key: K) -> Option<K>{
         self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
                 Some(node) => {
-                    Some(node.child_nodes[Self::get_index(key, node.key)].get_or_closest_internal(key, node.key).unwrap_or(node.key))
+                    Some(node.child_nodes[Self::get_index(key, node.key)].get_key_or_closest_internal(key, node.key).unwrap_or(node.key))
                 }
             }
         }).unwrap()
@@ -240,6 +240,10 @@ impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
 
     pub fn clear(&self){
         self.0.clear();
+    }
+    
+    pub fn get_key_or_closest(&self, key: K) -> Option<K>{
+        self.0.get_key_or_closest(key)
     }
 
     pub fn contains_key(&self, key: K) -> bool{
