@@ -1,5 +1,3 @@
-//#![recursion_limit = "128"] //default is 128, can increase if desired
-
 use std::ops::Sub;
 use std::sync::RwLock;
 
