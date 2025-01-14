@@ -1,11 +1,29 @@
 use std::sync::RwLock;
 
 #[derive(Debug)]
-struct ChildNode<K,V>(RwLock<Option<Box<ConcurrentBSTNode<K,V>>>>);
+struct ConcurrentBSTInternal<K,V>{
+    key: K,
+    value: V,
+    child_nodes: [ConcurrentBSTMap<K,V>; 2]
+}
 
-impl<K: Copy + Ord, V: Copy> ChildNode<K,V>{
+impl<K: Copy + Ord, V: Copy> ConcurrentBSTInternal<K,V>{
+    
+    const fn new(key: K, value: V) -> Self {
+        Self {
+            key,
+            value,
+            child_nodes: [const { ConcurrentBSTMap::new() }; 2]
+        }
+    }
+}
 
-    const fn new() -> Self{
+#[derive(Debug)]
+pub struct ConcurrentBSTMap<K,V>(RwLock<Option<Box<ConcurrentBSTInternal<K,V>>>>);
+
+impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
+
+    pub const fn new() -> Self{
         Self(RwLock::new(None))
     }
 
@@ -13,7 +31,11 @@ impl<K: Copy + Ord, V: Copy> ChildNode<K,V>{
         if target < current {0} else {1}
     }
 
-    fn len(&self) -> usize{
+    pub fn clear(&self){
+        *self.0.write().unwrap() = None
+    }
+
+    pub fn len(&self) -> usize{
         self.0.read().map(|read_lock| {
             match &*read_lock{
                 None => 0,
@@ -24,7 +46,7 @@ impl<K: Copy + Ord, V: Copy> ChildNode<K,V>{
         }).unwrap()
     }
     
-    fn get(&self, key: K) -> Option<V>{
+    pub fn get(&self, key: K) -> Option<V>{
         self.0.read().map(|read_lock| {
             match &*read_lock{
                 None => None,
@@ -36,7 +58,15 @@ impl<K: Copy + Ord, V: Copy> ChildNode<K,V>{
         }).unwrap()
     }
 
-    fn insert_or_update_if(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool) -> bool{
+    pub fn contains_key(&self, key: K) -> bool{
+        self.get(key).is_some()
+    }
+
+    pub fn insert_or_update(&self, key: K, value: V)  -> bool{
+        self.insert_or_update_if(key, value, &|_,_| true)
+    }
+
+    pub fn insert_or_update_if(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool) -> bool{
         loop{
             match self.0.read().map(|read_lock| {
                 match &*read_lock{
@@ -54,7 +84,7 @@ impl<K: Copy + Ord, V: Copy> ChildNode<K,V>{
                 match &mut *write_lock{
                     None => {
                         //insert
-                        *write_lock = Some(Box::new(ConcurrentBSTNode::new(key, value)));
+                        *write_lock = Some(Box::new(ConcurrentBSTInternal::new(key, value)));
                         Some(true)
                     }
                     Some(node) => {
@@ -102,7 +132,7 @@ impl<K: Copy + Ord, V: Copy> ChildNode<K,V>{
         }).unwrap()
     }
     
-    fn remove_if(&self, key: K, should_remove: &impl Fn(&V) -> bool){
+    pub fn remove_if(&self, key: K, should_remove: &impl Fn(&V) -> bool){
         loop{
             if self.0.read().map(|read_lock| {
                 match &*read_lock{
@@ -136,66 +166,11 @@ impl<K: Copy + Ord, V: Copy> ChildNode<K,V>{
             }).unwrap() {return}
         }
     }
-}
 
-#[derive(Debug)]
-struct ConcurrentBSTNode<K,V>{
-    key: K,
-    value: V,
-    child_nodes: [ChildNode<K,V>; 2]
-}
-
-impl<K: Copy + Ord, V: Copy> ConcurrentBSTNode<K,V>{
-    
-    const fn new(key: K, value: V) -> Self {
-        Self {
-            key,
-            value,
-            child_nodes: [const { ChildNode::new() }; 2]
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct ConcurrentBSTMap<K, V>(ChildNode<K,V>);
-
-impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
-
-    pub const fn new() -> Self{
-        Self(ChildNode::new())
-    }
-
-    pub fn len(&self) -> usize{
-        self.0.len()
-    }
-
-    pub fn clear(&self){
-        *self.0.0.write().unwrap() = None;
-    }
-
-    pub fn get(&self, key: K) -> Option<V>{
-        self.0.get(key)
-    }
-
-    pub fn contains_key(&self, key: K) -> bool{
-        self.get(key).is_some()
-    }
-
-    pub fn insert_or_update(&self, key: K, value: V)  -> bool{
-        self.insert_or_update_if(key, value, &|_,_| true)
-    }
-    
-    pub fn insert_or_update_if(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool) -> bool{
-        self.0.insert_or_update_if(key, value, should_update)
-    }
-    
     pub fn remove(&self, key: K){
         self.remove_if(key, &|_| true)
     }
 
-    pub fn remove_if(&self, key: K, should_remove: &impl Fn(&V) -> bool){
-        self.0.remove_if(key, should_remove)
-    }
 }
 
 #[derive(Debug)]
