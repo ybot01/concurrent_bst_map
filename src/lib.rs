@@ -157,24 +157,24 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTNode<K,V>{
 }
 
 #[derive(Debug)]
-pub struct ConcurrentBSTMap<K, V>(RwLock<ChildNode<K,V>>);
+pub struct ConcurrentBSTMap<K, V>(ChildNode<K,V>);
 
 impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
 
     pub const fn new() -> Self{
-        Self(RwLock::new(ChildNode::new()))
+        Self(ChildNode::new())
     }
 
     pub fn len(&self) -> usize{
-        self.0.read().unwrap().len()
+        self.0.len()
     }
 
     pub fn clear(&self){
-        self.0.read().iter().for_each(|x| *x.0.write().unwrap() = None)
+        *self.0.0.write().unwrap() = None;
     }
 
     pub fn get(&self, key: K) -> Option<V>{
-        self.0.read().unwrap().get(key)
+        self.0.get(key)
     }
 
     pub fn contains_key(&self, key: K) -> bool{
@@ -186,7 +186,7 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
     }
     
     pub fn insert_or_update_if(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool) -> bool{
-        self.0.read().unwrap().insert_or_update_if(key, value, should_update)
+        self.0.insert_or_update_if(key, value, should_update)
     }
     
     pub fn remove(&self, key: K){
@@ -194,7 +194,7 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
     }
 
     pub fn remove_if(&self, key: K, should_remove: &impl Fn(&V) -> bool){
-        self.0.read().unwrap().remove_if(key, should_remove)
+        self.0.remove_if(key, should_remove)
     }
 }
 
