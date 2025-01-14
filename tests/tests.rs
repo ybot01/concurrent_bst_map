@@ -47,7 +47,7 @@ fn length_test(){
 fn depth_test(){
     let bst = ConcurrentBSTMap::<SecretKey, User>::new();
     let mut users = Vec::<User>::new();
-    let expected = 10000;
+    let expected = 1000000;
     for _ in 0..expected {users.push(User::random())}
     users.iter().for_each(|x| _ = bst.insert_or_update_if(x.user_id, *x, &should_update));
     println!("{}", bst.depth());

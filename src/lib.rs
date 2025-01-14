@@ -1,5 +1,6 @@
 //#![recursion_limit = "128"] //default is 128, can increase if desired
 
+use std::ops::Sub;
 use std::sync::RwLock;
 
 #[derive(Debug)]
@@ -9,7 +10,7 @@ struct ConcurrentBSTInternal<K,V>{
     child_nodes: [ConcurrentBSTMap<K,V>; 2]
 }
 
-impl<K: Copy + Ord, V: Copy> ConcurrentBSTInternal<K,V>{
+impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTInternal<K,V>{
     
     const fn new(key: K, value: V) -> Self {
         Self {
@@ -23,38 +24,14 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTInternal<K,V>{
 #[derive(Debug)]
 pub struct ConcurrentBSTMap<K,V>(RwLock<Option<Box<ConcurrentBSTInternal<K,V>>>>);
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
-enum Direction{
-    Left,
-    Right
-}
-
-impl Direction{
-    
-    fn to_usize(&self) -> usize{
-        match self{
-            Direction::Left => 0,
-            Direction::Right => 1
-        }
-    }
-    
-    fn get_opposite(&self) -> Self{
-        match self{
-            Direction::Left => Direction::Right,
-            Direction::Right => Direction::Left
-        }
-    }
-    
-    fn get_direction<K>(target_key: K, current_key: K) -> Self where K: Ord{
-        if target_key < current_key {Self::Left} else {Self::Right}
-    }
-}
-
-
-impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
+impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
 
     pub const fn new() -> Self{
         Self(RwLock::new(None))
+    }
+
+    fn get_index(target: K, current: K) -> usize{
+        if target < current {0} else {1}
     }
 
     pub fn clear(&self){
@@ -89,27 +66,71 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
                 None => None,
                 Some(node) => {
                     if node.key == key {Some(node.value)}
-                    else {node.child_nodes[Direction::get_direction(key, node.key).to_usize()].get(key)}
+                    else {node.child_nodes[Self::get_index(key, node.key)].get(key)}
                 }
             }
         }).unwrap()
     }
 
-    pub fn get_or_closest(&self, key: K) -> Option<V>{
+    /*
+    
+    function findClosestValueInBst(tree, target) {
+    let closest = tree.value;
+  const traverse = (inputTree) => {
+        if (inputTree === null) return;
+        if (Math.abs(target - closest) > Math.abs(target - inputTree.value)) {
+            closest = inputTree.value;
+        }
+        // As you can see below this line you are checking target < tree.value
+        // problem is that tree is the root that your surrounding function gets
+        // not the argument that your recursive function gets.
+        // both your condition and your parameter to traverse
+        // need to be inputTree, not tree
+        if (target < tree.value) {
+            console.log('left')
+            traverse(inputTree.left)
+        } else {
+            console.log('right')
+            traverse(inputTree.right)
+        }
+        
+    }
+    traverse(tree)
+    return closest;
+}
+     */
+    
+    fn abs_diff<T: Ord + Sub<Output = T>>(item_1: T, item_2: T) -> T{
+        if item_2 > item_1 {item_2 - item_1} 
+        else {item_1 - item_2}
+    }
+    
+    fn get_or_closest_internal(&self, key: K, closest: K) -> Option<K>{
         self.0.read().map(|read_lock| {
-            match &*read_lock{
+            match &*read_lock {
                 None => None,
                 Some(node) => {
-                    if node.key == key {Some(node.value)}
+                    if key == node.key {Some(node.key)}
                     else{
-                        match node.child_nodes[Direction::get_direction(key, node.key).to_usize()].get_or_closest(key){
-                            None => {
-                                
-                            }
-                            Some(result) => Some(result)
-                        }
+                        node.child_nodes[Self::get_index(key, node.key)].get_or_closest_internal(
+                            key,
+                            if Self::abs_diff(key, node.key) < Self::abs_diff(key, closest) {node.key} else {closest}
+                        )
                     }
-                    
+                }
+            }
+        }).unwrap()
+    }
+    
+    pub fn get_or_closest(&self, key: K) -> Option<K>{
+        self.0.read().map(|read_lock| {
+            match &*read_lock {
+                None => None,
+                Some(node) => {
+                    if key == node.key {Some(node.key)}
+                    else{
+                        node.child_nodes[Self::get_index(key, node.key)].get_or_closest_internal(key, node.key)
+                    }
                 }
             }
         }).unwrap()
@@ -121,7 +142,7 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
                 None => false,
                 Some(node) => {
                     if node.key == key {true}
-                    else {node.child_nodes[Direction::get_direction(key, node.key).to_usize()].contains_key(key)}
+                    else {node.child_nodes[Self::get_index(key, node.key)].contains_key(key)}
                 }
             }
         }).unwrap()
@@ -137,7 +158,7 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
                 match &*read_lock{
                     None => None,
                     Some(node) => {
-                        if node.key != key {Some(node.child_nodes[Direction::get_direction(key, node.key).to_usize()].insert_or_update_if(key, value, should_update))}
+                        if node.key != key {Some(node.child_nodes[Self::get_index(key, node.key)].insert_or_update_if(key, value, should_update))}
                         else {None}
                     }
                 }
@@ -174,17 +195,17 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
         }
     }
     
-    fn internal_get_replacement_key_value(&self, direction: Direction) -> Option<(K,V)>{
+    fn internal_get_replacement_key_value(&self, go_left: bool) -> Option<(K,V)>{
         self.0.write().map(|mut write_lock| {
             match &mut *write_lock {
                 None => None,
                 Some(node) => {
-                    match node.child_nodes[direction.to_usize()].internal_get_replacement_key_value(direction){
+                    match node.child_nodes[if go_left {0} else {1}].internal_get_replacement_key_value(go_left){
                         None => {
                             //found replacement node with no node in chosen direction
                             let key_value = (node.key, node.value);
                             //if got opposite direction node, recursively run on that
-                            match node.child_nodes[direction.get_opposite().to_usize()].internal_get_replacement_key_value(direction){
+                            match node.child_nodes[if go_left {1} else {0}].internal_get_replacement_key_value(go_left){
                                 None => *write_lock = None,
                                 Some(result) => (node.key, node.value) = result
                             }
@@ -204,7 +225,7 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
                     None => true,
                     Some(node) => {
                         if node.key != key {
-                            node.child_nodes[Direction::get_direction(key, node.key).to_usize()].remove_if(key, should_remove);
+                            node.child_nodes[Self::get_index(key, node.key)].remove_if(key, should_remove);
                             true
                         }
                         else {false}
@@ -218,8 +239,8 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
                         //if a different key than before then retry the read lock
                         if node.key != key {false}
                         else if should_remove(&node.value){
-                            match node.child_nodes[Direction::Right.to_usize()].internal_get_replacement_key_value(Direction::Left)
-                                .or(node.child_nodes[Direction::Left.to_usize()].internal_get_replacement_key_value(Direction::Right)) {
+                            match node.child_nodes[1].internal_get_replacement_key_value(true)
+                                .or(node.child_nodes[0].internal_get_replacement_key_value(false)) {
                                 None => *write_lock = None,
                                 Some(result) => (node.key, node.value) = result
                             }
@@ -241,7 +262,7 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
 #[derive(Debug)]
 pub struct ConcurrentBSTSet<K>(ConcurrentBSTMap<K, ()>);
 
-impl<K: Copy + Ord> ConcurrentBSTSet<K>{
+impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
     
     pub const fn new() -> Self{
         Self(ConcurrentBSTMap::new())
