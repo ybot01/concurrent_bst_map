@@ -43,6 +43,16 @@ fn length_test(){
     assert_eq!(bst.len(), expected);
 }
 
+#[test]
+fn depth_test(){
+    let bst = ConcurrentBSTMap::<SecretKey, User>::new();
+    let mut users = Vec::<User>::new();
+    let expected = 10000;
+    for _ in 0..expected {users.push(User::random())}
+    users.iter().for_each(|x| _ = bst.insert_or_update_if(x.user_id, *x, &should_update));
+    println!("{}", bst.depth());
+}
+
 
 #[test]
 fn remove_test(){

@@ -1,3 +1,5 @@
+//#![recursion_limit = "128"] //default is 128, can increase if desired
+
 use std::sync::RwLock;
 
 #[derive(Debug)]
@@ -46,6 +48,17 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
         }).unwrap()
     }
     
+    pub fn depth(&self) -> usize{
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                None => 0,
+                Some(node) => {
+                    1 + node.child_nodes[0].depth().max(node.child_nodes[1].depth())
+                }
+            }
+        }).unwrap()
+    }
+    
     pub fn get(&self, key: K) -> Option<V>{
         self.0.read().map(|read_lock| {
             match &*read_lock{
@@ -58,8 +71,36 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
         }).unwrap()
     }
 
+    /*pub fn get_or_closest(&self, key: K) -> Option<V>{
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                None => None,
+                Some(node) => {
+                    if node.key == key {Some(node.value)}
+                    else{
+                        match node.child_nodes[Self::get_index(key, node.key)].get_or_closest(key){
+                            None => {
+                                
+                            }
+                            Some(result) => Some(result)
+                        }
+                    }
+                    
+                }
+            }
+        }).unwrap()
+    }*/
+
     pub fn contains_key(&self, key: K) -> bool{
-        self.get(key).is_some()
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                None => false,
+                Some(node) => {
+                    if node.key == key {true}
+                    else {node.child_nodes[Self::get_index(key, node.key)].contains_key(key)}
+                }
+            }
+        }).unwrap()
     }
 
     pub fn insert_or_update(&self, key: K, value: V)  -> bool{
