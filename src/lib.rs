@@ -177,6 +177,7 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
 pub struct ConcurrentBSTSet<K>(ConcurrentBSTMap<K, ()>);
 
 impl<K: Copy + Ord> ConcurrentBSTSet<K>{
+    
     pub const fn new() -> Self{
         Self(ConcurrentBSTMap::new())
     }
@@ -201,4 +202,3 @@ impl<K: Copy + Ord> ConcurrentBSTSet<K>{
         self.0.remove(key)
     }
 }
-
