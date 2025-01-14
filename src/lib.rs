@@ -233,6 +233,10 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         self.remove_if(key, &|_| true)
     }
 
+    pub fn retain(&self, criteria: &impl Fn(&V) -> bool){
+        
+    }
+
 }
 
 #[derive(Debug)]
