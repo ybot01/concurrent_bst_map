@@ -23,14 +23,38 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTInternal<K,V>{
 #[derive(Debug)]
 pub struct ConcurrentBSTMap<K,V>(RwLock<Option<Box<ConcurrentBSTInternal<K,V>>>>);
 
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
+enum Direction{
+    Left,
+    Right
+}
+
+impl Direction{
+    
+    fn to_usize(&self) -> usize{
+        match self{
+            Direction::Left => 0,
+            Direction::Right => 1
+        }
+    }
+    
+    fn get_opposite(&self) -> Self{
+        match self{
+            Direction::Left => Direction::Right,
+            Direction::Right => Direction::Left
+        }
+    }
+    
+    fn get_direction<K>(target_key: K, current_key: K) -> Self where K: Ord{
+        if target_key < current_key {Self::Left} else {Self::Right}
+    }
+}
+
+
 impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
 
     pub const fn new() -> Self{
         Self(RwLock::new(None))
-    }
-
-    fn get_index(target: K, current: K) -> usize{
-        if target < current {0} else {1}
     }
 
     pub fn clear(&self){
@@ -65,20 +89,20 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
                 None => None,
                 Some(node) => {
                     if node.key == key {Some(node.value)}
-                    else {node.child_nodes[Self::get_index(key, node.key)].get(key)}
+                    else {node.child_nodes[Direction::get_direction(key, node.key).to_usize()].get(key)}
                 }
             }
         }).unwrap()
     }
 
-    /*pub fn get_or_closest(&self, key: K) -> Option<V>{
+    pub fn get_or_closest(&self, key: K) -> Option<V>{
         self.0.read().map(|read_lock| {
             match &*read_lock{
                 None => None,
                 Some(node) => {
                     if node.key == key {Some(node.value)}
                     else{
-                        match node.child_nodes[Self::get_index(key, node.key)].get_or_closest(key){
+                        match node.child_nodes[Direction::get_direction(key, node.key).to_usize()].get_or_closest(key){
                             None => {
                                 
                             }
@@ -89,7 +113,7 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
                 }
             }
         }).unwrap()
-    }*/
+    }
 
     pub fn contains_key(&self, key: K) -> bool{
         self.0.read().map(|read_lock| {
@@ -97,7 +121,7 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
                 None => false,
                 Some(node) => {
                     if node.key == key {true}
-                    else {node.child_nodes[Self::get_index(key, node.key)].contains_key(key)}
+                    else {node.child_nodes[Direction::get_direction(key, node.key).to_usize()].contains_key(key)}
                 }
             }
         }).unwrap()
@@ -113,7 +137,7 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
                 match &*read_lock{
                     None => None,
                     Some(node) => {
-                        if node.key != key {Some(node.child_nodes[Self::get_index(key, node.key)].insert_or_update_if(key, value, should_update))}
+                        if node.key != key {Some(node.child_nodes[Direction::get_direction(key, node.key).to_usize()].insert_or_update_if(key, value, should_update))}
                         else {None}
                     }
                 }
@@ -150,17 +174,17 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
         }
     }
     
-    fn internal_get_replacement_key_value(&self, go_left: bool) -> Option<(K,V)>{
+    fn internal_get_replacement_key_value(&self, direction: Direction) -> Option<(K,V)>{
         self.0.write().map(|mut write_lock| {
             match &mut *write_lock {
                 None => None,
                 Some(node) => {
-                    match node.child_nodes[if go_left {0} else {1}].internal_get_replacement_key_value(go_left){
+                    match node.child_nodes[direction.to_usize()].internal_get_replacement_key_value(direction){
                         None => {
                             //found replacement node with no node in chosen direction
                             let key_value = (node.key, node.value);
                             //if got opposite direction node, recursively run on that
-                            match node.child_nodes[if go_left {1} else {0}].internal_get_replacement_key_value(go_left){
+                            match node.child_nodes[direction.get_opposite().to_usize()].internal_get_replacement_key_value(direction){
                                 None => *write_lock = None,
                                 Some(result) => (node.key, node.value) = result
                             }
@@ -180,7 +204,7 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
                     None => true,
                     Some(node) => {
                         if node.key != key {
-                            node.child_nodes[Self::get_index(key, node.key)].remove_if(key, should_remove);
+                            node.child_nodes[Direction::get_direction(key, node.key).to_usize()].remove_if(key, should_remove);
                             true
                         }
                         else {false}
@@ -194,8 +218,8 @@ impl<K: Copy + Ord, V: Copy> ConcurrentBSTMap<K,V>{
                         //if a different key than before then retry the read lock
                         if node.key != key {false}
                         else if should_remove(&node.value){
-                            match node.child_nodes[1].internal_get_replacement_key_value(true)
-                                .or(node.child_nodes[0].internal_get_replacement_key_value(false)) {
+                            match node.child_nodes[Direction::Right.to_usize()].internal_get_replacement_key_value(Direction::Left)
+                                .or(node.child_nodes[Direction::Left.to_usize()].internal_get_replacement_key_value(Direction::Right)) {
                                 None => *write_lock = None,
                                 Some(result) => (node.key, node.value) = result
                             }
