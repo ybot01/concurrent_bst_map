@@ -71,34 +71,6 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
             }
         }).unwrap()
     }
-
-    /*
-    
-    function findClosestValueInBst(tree, target) {
-    let closest = tree.value;
-  const traverse = (inputTree) => {
-        if (inputTree === null) return;
-        if (Math.abs(target - closest) > Math.abs(target - inputTree.value)) {
-            closest = inputTree.value;
-        }
-        // As you can see below this line you are checking target < tree.value
-        // problem is that tree is the root that your surrounding function gets
-        // not the argument that your recursive function gets.
-        // both your condition and your parameter to traverse
-        // need to be inputTree, not tree
-        if (target < tree.value) {
-            console.log('left')
-            traverse(inputTree.left)
-        } else {
-            console.log('right')
-            traverse(inputTree.right)
-        }
-        
-    }
-    traverse(tree)
-    return closest;
-}
-     */
     
     fn abs_diff<T: Ord + Sub<Output = T>>(item_1: T, item_2: T) -> T{
         if item_2 > item_1 {item_2 - item_1} 
@@ -110,13 +82,10 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
             match &*read_lock {
                 None => None,
                 Some(node) => {
-                    if key == node.key {Some(node.key)}
-                    else{
-                        node.child_nodes[Self::get_index(key, node.key)].get_or_closest_internal(
-                            key,
-                            if Self::abs_diff(key, node.key) < Self::abs_diff(key, closest) {node.key} else {closest}
-                        )
-                    }
+                    let new_closest = if Self::abs_diff(key, node.key) < Self::abs_diff(key, closest) {node.key} else {closest};
+                    Some(
+                        node.child_nodes[Self::get_index(key, node.key)].get_or_closest_internal(key, new_closest).unwrap_or(new_closest)
+                    )
                 }
             }
         }).unwrap()
@@ -127,10 +96,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
             match &*read_lock {
                 None => None,
                 Some(node) => {
-                    if key == node.key {Some(node.key)}
-                    else{
-                        node.child_nodes[Self::get_index(key, node.key)].get_or_closest_internal(key, node.key)
-                    }
+                    Some(node.child_nodes[Self::get_index(key, node.key)].get_or_closest_internal(key, node.key).unwrap_or(node.key))
                 }
             }
         }).unwrap()
