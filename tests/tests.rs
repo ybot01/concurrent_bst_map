@@ -34,6 +34,18 @@ impl ShouldUpdate for User{
         other.update_counter > self.update_counter
     }
 }
+
+#[test]
+fn length_test(){
+    let bst = ConcurrentBST::<SecretKey, User>::new();
+    let mut users = Vec::<User>::new();
+    let expected = 10000;
+    for _ in 0..expected {users.push(User::random())}
+    users.iter().for_each(|x| _ = bst.add_or_update(x.user_id, *x));
+    assert_eq!(bst.len(), expected);
+}
+
+
 #[test]
 fn remove_test(){
     let bst = ConcurrentBST::<SecretKey, User>::new();

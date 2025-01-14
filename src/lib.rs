@@ -8,12 +8,24 @@ pub trait ShouldUpdate {
 struct ChildNode<K,V>(RwLock<Option<Box<ConcurrentBSTNode<K,V>>>>);
 
 impl<K: Copy + Ord, V: Copy + ShouldUpdate> ChildNode<K,V>{
+
     const fn new() -> Self{
         Self(RwLock::new(None))
     }
 
     fn get_index(target: K, current: K) -> usize{
         if target < current {0} else {1}
+    }
+
+    fn len(&self) -> usize{
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                None => 0,
+                Some(node) => {
+                    1 + node.child_nodes[0].len() + node.child_nodes[1].len()
+                }
+            }
+        }).unwrap()
     }
     
     fn get(&self, key: K) -> Option<V>{
@@ -138,6 +150,7 @@ struct ConcurrentBSTNode<K,V>{
 }
 
 impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBSTNode<K,V>{
+    
     const fn new(key: K, value: V) -> Self {
         Self {
             key,
@@ -152,12 +165,16 @@ pub struct ConcurrentBST<K, V>(RwLock<ChildNode<K,V>>);
 
 impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
 
-    pub fn clear(&self){
-        self.0.read().iter().for_each(|x| *x.0.write().unwrap() = None)
-    }
-    
     pub const fn new() -> Self{
         Self(RwLock::new(ChildNode::new()))
+    }
+
+    pub fn len(&self) -> usize{
+        self.0.read().unwrap().len()
+    }
+
+    pub fn clear(&self){
+        self.0.read().iter().for_each(|x| *x.0.write().unwrap() = None)
     }
 
     pub fn get(&self, key: K) -> Option<V>{
