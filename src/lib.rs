@@ -82,9 +82,13 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
             match &*read_lock {
                 None => None,
                 Some(node) => {
-                    let new_closest = if Self::abs_diff(key, node.key) < Self::abs_diff(key, closest.0) {(node.key, node.value)} else {closest};
+                    let key_value = (node.key, node.value);
                     Some(
-                        node.child_nodes[Self::get_index(key, node.key)].get_or_closest_by_key_internal(key, new_closest).unwrap_or(new_closest)
+                        if node.key == key {key_value}
+                        else{
+                            let new_closest = if Self::abs_diff(key, node.key) < Self::abs_diff(key, closest.0) {key_value} else {closest};
+                            node.child_nodes[Self::get_index(key, node.key)].get_or_closest_by_key_internal(key, new_closest).unwrap_or(new_closest)
+                        }
                     )
                 }
             }
