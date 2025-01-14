@@ -4,7 +4,7 @@ use std::sync::{LazyLock, RwLock};
 use ed25519_dalek::{ed25519::SignatureBytes, SecretKey};
 use rand::random;
 use tokio::task::JoinHandle;
-use concurrent_bst::{ConcurrentBST, ShouldUpdate};
+use concurrent_bst::ConcurrentBSTMap;
 
 pub(crate) fn timestamp() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_millis() as u64
@@ -29,68 +29,66 @@ impl User{
     }
 }
 
-impl ShouldUpdate for User{
-    fn should_update_to(&self, other: &Self) -> bool {
-        other.update_counter > self.update_counter
-    }
+fn should_update(user_1: &User, user_2: &User) -> bool{
+    user_2.update_counter > user_1.update_counter
 }
 
 #[test]
 fn length_test(){
-    let bst = ConcurrentBST::<SecretKey, User>::new();
+    let bst = ConcurrentBSTMap::<SecretKey, User>::new();
     let mut users = Vec::<User>::new();
     let expected = 10000;
     for _ in 0..expected {users.push(User::random())}
-    users.iter().for_each(|x| _ = bst.add_or_update(x.user_id, *x));
+    users.iter().for_each(|x| _ = bst.insert_or_update_if(x.user_id, *x, &should_update));
     assert_eq!(bst.len(), expected);
 }
 
 
 #[test]
 fn remove_test(){
-    let bst = ConcurrentBST::<SecretKey, User>::new();
+    let bst = ConcurrentBSTMap::<SecretKey, User>::new();
     let mut users = Vec::<User>::new();
     for _ in 0..10000 {users.push(User::random())}
-    users.iter().for_each(|x| _ = bst.add_or_update(x.user_id, *x));
+    users.iter().for_each(|x| _ = bst.insert_or_update_if(x.user_id, *x, &should_update));
     users.iter().for_each(|x| bst.remove(x.user_id));
     assert!(users.iter().all(|x| bst.get(x.user_id).is_none()));
 }
 
 #[test]
 fn should_update_test() {
-    let bst = ConcurrentBST::<SecretKey, User>::new();
+    let bst = ConcurrentBSTMap::<SecretKey, User>::new();
     let mut user = User::random();
-    assert!(bst.add_or_update(user.user_id, user));
+    assert!(bst.insert_or_update_if(user.user_id, user, &should_update));
     user.update_counter += 1;
-    assert!(bst.add_or_update(user.user_id, user));
+    assert!(bst.insert_or_update_if(user.user_id, user, &should_update));
     user.update_counter -= 1;
-    assert!(!bst.add_or_update(user.user_id, user));
+    assert!(!bst.insert_or_update_if(user.user_id, user, &should_update));
 }
 
 #[test]
 fn insert_and_get_test() {
-    let bst = ConcurrentBST::<SecretKey, User>::new();
+    let bst = ConcurrentBSTMap::<SecretKey, User>::new();
     let user = User::random();
-    bst.add_or_update(user.user_id, user);
+    bst.insert_or_update_if(user.user_id, user, &should_update);
     assert!(bst.get(user.user_id).is_some_and(|x| x == user));
 }
 
 #[test]
-fn bench_add_or_update(){
-    let bst = ConcurrentBST::<SecretKey, User>::new();
+fn bench_insert_or_update_if(){
+    let bst = ConcurrentBSTMap::<SecretKey, User>::new();
     let mut user = User::random();
     let mut true_count = 0;
     let total = 1000000;
     let start_time = SystemTime::now();
     for _ in 0..total{
-        if bst.add_or_update(user.user_id, user) {true_count += 1};
+        if bst.insert_or_update_if(user.user_id, user, &should_update) {true_count += 1};
         user.update_counter += 1;
     }
     println!("{}", total as f64 / SystemTime::now().duration_since(start_time).unwrap().as_secs_f64());
     assert_eq!(true_count, total);
 }
 
-static GLOBAL_BST: ConcurrentBST<SecretKey, User> = ConcurrentBST::<SecretKey, User>::new();
+static GLOBAL_BST: ConcurrentBSTMap<SecretKey, User> = ConcurrentBSTMap::<SecretKey, User>::new();
 
 static TRUE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
@@ -104,7 +102,7 @@ static USER_LIST: LazyLock<RwLock<Vec<User>>> = LazyLock::new(|| {
 });
 
 #[test]
-fn bench_multi_thread_add_or_update_and_remove(){
+fn bench_multi_thread_insert_or_update_if_and_remove(){
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -119,7 +117,7 @@ fn bench_multi_thread_add_or_update_and_remove(){
                     USER_LIST.read().map(|read_lock| {
                         for i in start_index..(start_index+TOTAL_PER_THREAD) {
                             let user = read_lock[i];
-                            if GLOBAL_BST.add_or_update(user.user_id, user){
+                            if GLOBAL_BST.insert_or_update_if(user.user_id, user, &should_update){
                                 TRUE_COUNT.fetch_add(1, Ordering::Relaxed);
                             }
                         }
