@@ -30,12 +30,12 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         Self(RwLock::new(None))
     }
 
-    fn get_index(target: K, current: K) -> usize{
-        if target < current {0} else {1}
-    }
-
     pub fn clear(&self){
         *self.0.write().unwrap() = None
+    }
+
+    pub fn is_empty(&self) -> bool{
+        self.len() == 0
     }
 
     pub fn len(&self) -> usize{
@@ -55,6 +55,23 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
                 None => 0,
                 Some(node) => {
                     1 + node.child_nodes[0].depth().max(node.child_nodes[1].depth())
+                }
+            }
+        }).unwrap()
+    }
+
+
+    fn get_index(target: K, current: K) -> usize{
+        if target < current {0} else {1}
+    }
+
+    pub fn contains_key(&self, key: K) -> bool{
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                None => false,
+                Some(node) => {
+                    if node.key == key {true}
+                    else {node.child_nodes[Self::get_index(key, node.key)].contains_key(key)}
                 }
             }
         }).unwrap()
@@ -104,18 +121,6 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
                     Some(
                         node.child_nodes[Self::get_index(key, node.key)].get_or_closest_by_key_internal(key, closest).unwrap_or(closest)
                     )
-                }
-            }
-        }).unwrap()
-    }
-
-    pub fn contains_key(&self, key: K) -> bool{
-        self.0.read().map(|read_lock| {
-            match &*read_lock{
-                None => false,
-                Some(node) => {
-                    if node.key == key {true}
-                    else {node.child_nodes[Self::get_index(key, node.key)].contains_key(key)}
                 }
             }
         }).unwrap()
@@ -241,20 +246,28 @@ impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
         Self(ConcurrentBSTMap::new())
     }
 
+    pub fn clear(&self){
+        self.0.clear();
+    }
+
+    pub fn is_empty(&self) -> bool{
+        self.0.is_empty()
+    }
+
     pub fn len(&self) -> usize{
         self.0.len()
     }
 
-    pub fn clear(&self){
-        self.0.clear();
-    }
-    
-    pub fn get_or_closest(&self, key: K) -> Option<K>{
-        self.0.get_or_closest_by_key(key).map(|x| x.0)
+    pub fn depth(&self) -> usize{
+        self.0.depth()
     }
 
     pub fn contains_key(&self, key: K) -> bool{
         self.0.contains_key(key)
+    }
+
+    pub fn get_or_closest(&self, key: K) -> Option<K>{
+        self.0.get_or_closest_by_key(key).map(|x| x.0)
     }
 
     pub fn insert(&self, key: K){
