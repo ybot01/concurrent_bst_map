@@ -152,6 +152,10 @@ pub struct ConcurrentBST<K, V>(RwLock<ChildNode<K,V>>);
 
 impl<K: Copy + Ord, V: Copy + ShouldUpdate> ConcurrentBST<K,V>{
 
+    pub fn clear(&self){
+        self.0.read().iter().for_each(|x| *x.0.write().unwrap() = None)
+    }
+    
     pub const fn new() -> Self{
         Self(RwLock::new(ChildNode::new()))
     }

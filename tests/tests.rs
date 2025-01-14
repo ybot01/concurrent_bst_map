@@ -1,5 +1,6 @@
 use std::{net::{Ipv6Addr, SocketAddrV6}, time::{Duration, SystemTime, UNIX_EPOCH}};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{LazyLock, RwLock};
 use ed25519_dalek::{ed25519::SignatureBytes, SecretKey};
 use rand::random;
 use tokio::task::JoinHandle;
@@ -37,14 +38,14 @@ impl ShouldUpdate for User{
 fn remove_test(){
     let bst = ConcurrentBST::<SecretKey, User>::new();
     let mut users = Vec::<User>::new();
-    for _ in 0..10000 {}
-    assert!(bst.add_or_update(user.user_id, user));
-    bst.remove(user.user_id);
-    assert!(bst.get(user.user_id).is_none())
+    for _ in 0..10000 {users.push(User::random())}
+    users.iter().for_each(|x| _ = bst.add_or_update(x.user_id, *x));
+    users.iter().for_each(|x| bst.remove(x.user_id));
+    assert!(users.iter().all(|x| bst.get(x.user_id).is_none()));
 }
 
 #[test]
-fn test() {
+fn should_update_test() {
     let bst = ConcurrentBST::<SecretKey, User>::new();
     let mut user = User::random();
     assert!(bst.add_or_update(user.user_id, user));
@@ -63,7 +64,7 @@ fn insert_and_get_test() {
 }
 
 #[test]
-fn bench(){
+fn bench_add_or_update(){
     let bst = ConcurrentBST::<SecretKey, User>::new();
     let mut user = User::random();
     let mut true_count = 0;
@@ -81,38 +82,72 @@ static GLOBAL_BST: ConcurrentBST<SecretKey, User> = ConcurrentBST::<SecretKey, U
 
 static TRUE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
+const NO_THREADS: usize = 10;
+const TOTAL_PER_THREAD: usize = 100000;
+
+static USER_LIST: LazyLock<RwLock<Vec<User>>> = LazyLock::new(|| {
+    let mut list = Vec::<User>::new();
+    for _ in 0..(NO_THREADS*TOTAL_PER_THREAD) {list.push(User::random())}
+    RwLock::new(list)
+});
+
 #[test]
-fn bench_multi_thread(){
+fn bench_multi_thread_add_or_update_and_remove(){
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
         .unwrap()
         .block_on(async {
-            const NO_THREADS: usize = 10;
-            const TOTAL_PER_THREAD: usize = 100000;
+            _ = USER_LIST.read().unwrap().clone();
             let mut threads= Vec::<JoinHandle<Duration>>::new();
-            for _ in 0..NO_THREADS{
-                threads.push(tokio::spawn(async{
-                    let mut random_users = Vec::<User>::new();
-                    for _ in 0..TOTAL_PER_THREAD {random_users.push(User::random())}
+            for i in 0..NO_THREADS{
+                threads.push(tokio::spawn(async move{
+                    let start_index = TOTAL_PER_THREAD * i;
                     let start_time = SystemTime::now();
-                    for user in random_users{
-                        if GLOBAL_BST.add_or_update(user.user_id, user){
-                            TRUE_COUNT.fetch_add(1, Ordering::Relaxed);
+                    USER_LIST.read().map(|read_lock| {
+                        for i in start_index..(start_index+TOTAL_PER_THREAD) {
+                            let user = read_lock[i];
+                            if GLOBAL_BST.add_or_update(user.user_id, user){
+                                TRUE_COUNT.fetch_add(1, Ordering::Relaxed);
+                            }
                         }
-                    }
+                    }).unwrap();
                     SystemTime::now().duration_since(start_time).unwrap()
                 }))
             }
             while threads.iter().any(|x| !x.is_finished()) {}
             let mut max_duration = Duration::ZERO;
+            let mut duration;
             for i in threads{
-                let duration = i.await.unwrap();
+                duration = i.await.unwrap();
                 if duration > max_duration{
                     max_duration = duration;
                 }
             }
             println!("{}", (NO_THREADS*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
-            assert_eq!(TRUE_COUNT.load(Ordering::Relaxed), NO_THREADS*TOTAL_PER_THREAD)
+            assert_eq!(TRUE_COUNT.load(Ordering::Relaxed), NO_THREADS*TOTAL_PER_THREAD);
+            
+            threads = Vec::new();
+            for i in 0..NO_THREADS{
+                threads.push(tokio::spawn(async move{
+                    let start_index = TOTAL_PER_THREAD * i;
+                    let start_time = SystemTime::now();
+                    USER_LIST.read().map(|read_lock| {
+                        for i in start_index..(start_index+TOTAL_PER_THREAD) {
+                            GLOBAL_BST.remove(read_lock[i].user_id);
+                        }
+                    }).unwrap();
+                    SystemTime::now().duration_since(start_time).unwrap()
+                }))
+            }
+            while threads.iter().any(|x| !x.is_finished()) {}
+            max_duration = Duration::ZERO;
+            for i in threads{
+                duration = i.await.unwrap();
+                if duration > max_duration{
+                    max_duration = duration;
+                }
+            }
+            println!("{}", (NO_THREADS*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
         });
 }
