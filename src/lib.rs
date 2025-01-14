@@ -195,7 +195,7 @@ impl<K: Copy + Ord> ConcurrentBSTSet<K>{
     }
 
     pub fn insert(&self, key: K){
-        self.0.insert_or_update(key, ());
+        self.0.insert_or_update_if(key, (), &|_,_| false);
     }
     
     pub fn remove(&self, key: K){
