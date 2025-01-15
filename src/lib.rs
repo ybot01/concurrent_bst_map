@@ -35,7 +35,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTInternal<K,V>{
 pub struct ConcurrentBSTMap<K,V>(RwLock<Option<Box<ConcurrentBSTInternal<K,V>>>>);
 
 impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
-    
+
     pub fn clear(&self){
         *self.0.write().unwrap() = None;
     }
@@ -82,7 +82,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
     pub fn get_min(&self) -> Option<(K,V)>{
         self.get_min_or_max(true)
     }
-    
+
     pub fn get_next(&self, key: K) -> Option<(K, V)>{
         self.0.read().map(|read_lock| {
             match &*read_lock {
@@ -173,7 +173,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
             }
         }).unwrap()
     }
-    
+
     pub const fn new() -> Self{
         Self(RwLock::new(None))
     }
@@ -244,7 +244,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
             }
         }).unwrap()
     }
-    
+
     fn get_replacement_key_value(&self, go_left: bool) -> Option<(K,V)>{
         self.0.write().map(|mut write_lock| {
             match &mut *write_lock {
@@ -338,7 +338,7 @@ impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
     pub fn depth(&self) -> u32{
         self.0.depth()
     }
-    
+
     pub fn get_max(&self) -> Option<K>{
         self.0.get_max().map(|x| x.0)
     }
@@ -346,7 +346,7 @@ impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
     pub fn get_min(&self) -> Option<K>{
         self.0.get_min().map(|x| x.0)
     }
-    
+
     pub fn get_next(&self, key: K) -> Option<K>{
         self.0.get_next(key).map(|x| x.0)
     }
@@ -360,16 +360,17 @@ impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
     }
 
     pub fn iter(&self) -> ConcurrentBSTMapIterator<K, ()>{
-        ConcurrentBSTMapIterator{
-            map: &self.0,
-            current_key: self.get_min()
-        }
+        self.0.iter()
+    }
+    
+    pub fn into_iter(self) -> ConcurrentBSTMapIntoIterator<K, ()>{
+        self.0.into_iter()
     }
 
     pub fn len(&self) -> usize{
         self.0.len()
     }
-    
+
     pub const fn new() -> Self{
         Self(ConcurrentBSTMap::new())
     }
