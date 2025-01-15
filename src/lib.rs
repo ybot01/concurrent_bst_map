@@ -86,6 +86,18 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
             }
         }).unwrap()
     }
+
+    fn get_next(&self, key: K) -> Option<(K,V)>{
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                None => None,
+                Some(node) => {
+                    //find next biggest key than key
+
+                }
+            }
+        }).unwrap()
+    }
     
     fn abs_diff<T: Ord + Sub<Output = T>>(item_1: T, item_2: T) -> T{
         if item_2 > item_1 {item_2 - item_1} 
@@ -93,6 +105,11 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
     }
     
     fn get_or_closest_by_key_internal(&self, key: K, closest: (K,V)) -> Option<(K,V)>{
+        //change so finds the next largest key only
+        //add special case for if the item is the right most leaf node
+        //then check the left most leaf node as may be closer using repeating distance
+        //make target key optionally excluded
+        //toggle for loop if right most so can be disabled for iterator
         self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
@@ -236,7 +253,26 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
     pub fn retain(&self, criteria: &impl Fn(&V) -> bool){
         
     }
+}
 
+struct ConcurrentBSTMapIterator<'a, K, V> {
+    map: &'a ConcurrentBSTMap<K,V>,
+    current_key: Option<K>
+}
+
+impl<'a, K: Copy + Ord + Sub<Output = K>, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, K, V>{
+    type Item = (K,V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.current_key{
+            None => None,
+            Some(current_key) => {
+                let next_key_value = self.map.get_next(current_key);
+                self.current_key = next_key_value.map(|x| x.0);
+                next_key_value
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
