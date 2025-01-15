@@ -86,6 +86,17 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
             }
         }).unwrap()
     }
+
+    pub fn get_min(&self) -> Option<(K,V)>{
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                None => None,
+                Some(node) => {
+                    Some(node.child_nodes[0].get_min().unwrap_or((node.key, node.value)))
+                }
+            }
+        }).unwrap()
+    }
     
     fn abs_diff<T: Ord + Sub<Output = T>>(item_1: T, item_2: T) -> T{
         if item_2 > item_1 {item_2 - item_1} 
@@ -219,9 +230,16 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
     pub fn retain(&self, criteria: &impl Fn(&V) -> bool){
         
     }
+
+    pub fn iter(&self) -> ConcurrentBSTMapIterator<K, V>{
+        ConcurrentBSTMapIterator{
+            map: self,
+            current_key: self.get_min().map(|x| x.0)
+        }
+    }
 }
 
-struct ConcurrentBSTMapIterator<'a, K, V> {
+pub struct ConcurrentBSTMapIterator<'a, K, V> {
     map: &'a ConcurrentBSTMap<K,V>,
     current_key: Option<K>
 }
