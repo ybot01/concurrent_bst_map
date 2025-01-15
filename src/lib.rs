@@ -1,5 +1,17 @@
+use std::fmt;
 use std::ops::Sub;
 use std::sync::RwLock;
+
+#[derive(Debug, Clone)]
+pub struct MaxDepthReachedError;
+
+impl fmt::Display for MaxDepthReachedError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Insert would exceed max depth given")
+    }
+}
+
+impl std::error::Error for MaxDepthReachedError {}
 
 #[derive(Debug)]
 struct ConcurrentBSTInternal<K,V>{
@@ -29,7 +41,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
     }
 
     pub fn clear(&self){
-        *self.0.write().unwrap() = None
+        *self.0.write().unwrap() = None;
     }
 
     pub fn is_empty(&self) -> bool{
@@ -47,7 +59,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         }).unwrap()
     }
     
-    pub fn depth(&self) -> usize{
+    pub fn depth(&self) -> u32{
         self.0.read().map(|read_lock| {
             match &*read_lock{
                 None => 0,
@@ -111,14 +123,14 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         else {item_1 - item_2}
     }
 
-    fn get_next_for_iter(&self, key: K) -> Option<(K, V)>{
+    fn get_next(&self, key: K) -> Option<(K, V)>{
         self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
                 Some(node) => {
                     [
                         if node.key > key {Some((node.key, node.value))} else {None},
-                        node.child_nodes[Self::get_index(key, node.key)].get_next_for_iter(key)
+                        node.child_nodes[Self::get_index(key, node.key)].get_next(key)
                     ].iter().filter_map(|x| *x)
                     .min_by_key(|x| x.0 - key)
                 }
@@ -126,17 +138,22 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         }).unwrap()
     }
     
-    pub fn insert_or_update(&self, key: K, value: V)  -> bool{
-        self.insert_or_update_if(key, value, &|_,_| true)
+    pub fn insert_or_update(&self, key: K, value: V, max_depth: u32)  -> Result<bool, MaxDepthReachedError> {
+        self.insert_or_update_if(key, value, &|_,_| true, max_depth)
     }
 
-    pub fn insert_or_update_if(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool) -> bool{
+    pub fn insert_or_update_if(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool, max_depth: u32) -> Result<bool, MaxDepthReachedError>{
         loop{
             match self.0.read().map(|read_lock| {
                 match &*read_lock{
                     None => None,
                     Some(node) => {
-                        if node.key != key {Some(node.child_nodes[Self::get_index(key, node.key)].insert_or_update_if(key, value, should_update))}
+                        if node.key != key {
+                            Some(
+                                if max_depth == 0 {Err(MaxDepthReachedError)}
+                                else {node.child_nodes[Self::get_index(key, node.key)].insert_or_update_if(key, value, should_update, max_depth - 1)}
+                            )
+                        }
                         else {None}
                     }
                 }
@@ -148,21 +165,26 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
                 match &mut *write_lock{
                     None => {
                         //insert
-                        *write_lock = Some(Box::new(ConcurrentBSTInternal::new(key, value)));
-                        Some(true)
+                        Some(
+                            if max_depth == 0 {Err(MaxDepthReachedError)}
+                            else{
+                                *write_lock = Some(Box::new(ConcurrentBSTInternal::new(key, value)));
+                                Ok(true)
+                            }
+                        )
                     }
                     Some(node) => {
                         //if a different key than before then retry the read lock
                         if node.key != key {None}
                         else{
                             //update
-                            Some(
+                            Some(Ok(
                                 if should_update(&node.value, &value){
                                     node.value = value;
                                     true
                                 }
                                 else {false}
-                            )
+                            ))
                         }
                     }
                 }
@@ -276,7 +298,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> Iterator for ConcurrentBSTMapInto
         match self.current_key{
             None => None,
             Some(current_key) => {
-                let next_key_value = self.map.get_next_for_iter(current_key);
+                let next_key_value = self.map.get_next(current_key);
                 self.current_key = next_key_value.map(|x| x.0);
                 next_key_value
             }
@@ -296,7 +318,7 @@ impl<'a, K: Copy + Ord + Sub<Output = K>, V: Copy> Iterator for ConcurrentBSTMap
         match self.current_key{
             None => None,
             Some(current_key) => {
-                let next_key_value = self.map.get_next_for_iter(current_key);
+                let next_key_value = self.map.get_next(current_key);
                 self.current_key = next_key_value.map(|x| x.0);
                 next_key_value
             }
@@ -325,7 +347,7 @@ impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
         self.0.len()
     }
 
-    pub fn depth(&self) -> usize{
+    pub fn depth(&self) -> u32{
         self.0.depth()
     }
 
@@ -333,8 +355,8 @@ impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
         self.0.contains_key(key)
     }
 
-    pub fn insert(&self, key: K){
-        self.0.insert_or_update_if(key, (), &|_,_| false);
+    pub fn insert(&self, key: K, max_depth: u32) -> Result<(), MaxDepthReachedError>{
+        self.0.insert_or_update_if(key, (), &|_,_| false, max_depth).map(|_| ())
     }
     
     pub fn remove(&self, key: K){
