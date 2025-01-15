@@ -86,61 +86,35 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
             }
         }).unwrap()
     }
-
-    fn get_next(&self, key: K) -> Option<(K,V)>{
-        self.0.read().map(|read_lock| {
-            match &*read_lock{
-                None => None,
-                Some(node) => {
-                    //find next biggest key than key
-
-                }
-            }
-        }).unwrap()
-    }
     
     fn abs_diff<T: Ord + Sub<Output = T>>(item_1: T, item_2: T) -> T{
         if item_2 > item_1 {item_2 - item_1} 
         else {item_1 - item_2}
     }
-    
-    fn get_or_closest_by_key_internal(&self, key: K, closest: (K,V)) -> Option<(K,V)>{
-        //change so finds the next largest key only
-        //add special case for if the item is the right most leaf node
-        //then check the left most leaf node as may be closer using repeating distance
-        //make target key optionally excluded
-        //toggle for loop if right most so can be disabled for iterator
-        self.0.read().map(|read_lock| {
-            match &*read_lock {
-                None => None,
-                Some(node) => {
-                    let key_value = (node.key, node.value);
-                    Some(
-                        if node.key == key {key_value}
-                        else{
-                            let new_closest = if Self::abs_diff(key, node.key) < Self::abs_diff(key, closest.0) {key_value} else {closest};
-                            node.child_nodes[Self::get_index(key, node.key)].get_or_closest_by_key_internal(key, new_closest).unwrap_or(new_closest)
-                        }
-                    )
-                }
-            }
-        }).unwrap()
-    }
-    
-    pub fn get_or_closest_by_key(&self, key: K) -> Option<(K,V)>{
-        self.0.read().map(|read_lock| {
-            match &*read_lock {
-                None => None,
-                Some(node) => {
-                    let closest = (node.key, node.value);
-                    Some(
-                        node.child_nodes[Self::get_index(key, node.key)].get_or_closest_by_key_internal(key, closest).unwrap_or(closest)
-                    )
-                }
-            }
-        }).unwrap()
-    }
 
+    pub fn get_or_next_by_key(&self, key: K, include_key: bool, min_if_end: bool) -> Option<(K,V)>{
+        self.0.read().map(|read_lock| {
+            match &*read_lock {
+                None => None,
+                Some(node) => {
+                    let right_result = node.child_nodes[1].get_or_next_by_key(key, include_key, min_if_end);
+                    [
+                        if !include_key && (node.key == key) {None} else {Some((node.key, node.value))},
+                        node.child_nodes[0].get_or_next_by_key(key, include_key, false),
+                        right_result,
+                        //check if at right most node
+                        if right_result.is_none() && min_if_end{
+                            //check left most node of the tree
+                            //results[3] = 
+                        }
+                        else {None}
+                    ].iter().filter_map(|x| *x)
+                    .min_by_key(|x| Self::abs_diff(key, x.0))
+                }
+            }
+        }).unwrap()
+    }
+    
     pub fn insert_or_update(&self, key: K, value: V)  -> bool{
         self.insert_or_update_if(key, value, &|_,_| true)
     }
@@ -267,7 +241,7 @@ impl<'a, K: Copy + Ord + Sub<Output = K>, V: Copy> Iterator for ConcurrentBSTMap
         match self.current_key{
             None => None,
             Some(current_key) => {
-                let next_key_value = self.map.get_next(current_key);
+                let next_key_value = self.map.get_or_next_by_key(current_key, false, false);
                 self.current_key = next_key_value.map(|x| x.0);
                 next_key_value
             }
@@ -304,8 +278,8 @@ impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
         self.0.contains_key(key)
     }
 
-    pub fn get_or_closest(&self, key: K) -> Option<K>{
-        self.0.get_or_closest_by_key(key).map(|x| x.0)
+    pub fn get_or_next(&self, key: K, min_if_end: bool) -> Option<K>{
+        self.0.get_or_next_by_key(key, true, min_if_end).map(|x| x.0)
     }
 
     pub fn insert(&self, key: K){
