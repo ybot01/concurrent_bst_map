@@ -2,7 +2,7 @@ use std::fmt;
 use std::ops::Sub;
 use std::sync::RwLock;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct MaxDepthReachedError;
 
 impl fmt::Display for MaxDepthReachedError {
