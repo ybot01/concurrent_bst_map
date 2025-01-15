@@ -72,7 +72,6 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
             }
             if !error {return new_bst}
         }
-        
     }
 
     pub fn depth(&self) -> u32{
