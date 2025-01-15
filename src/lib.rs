@@ -35,6 +35,8 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTInternal<K,V>{
 pub struct ConcurrentBSTMap<K,V>(RwLock<Option<Box<ConcurrentBSTInternal<K,V>>>>);
 
 impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
+    
+    const DEFAULT_MAX_DEPTH: u32 = 500;
 
     pub fn clear(&self){
         *self.0.write().unwrap() = None;
@@ -97,12 +99,20 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
             }
         }).unwrap()
     }
-
-    pub fn insert_or_update(&self, key: K, value: V, max_depth: u32)  -> Result<bool, MaxDepthReachedError> {
-        self.insert_or_update_if(key, value, &|_,_| true, max_depth)
+    
+    pub fn insert_or_update(&self, key: K, value: V)  -> Result<bool, MaxDepthReachedError> {
+        self.insert_or_update_if_with_max_depth(key, value, &|_,_| true, Self::DEFAULT_MAX_DEPTH)
     }
 
-    pub fn insert_or_update_if(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool, max_depth: u32) -> Result<bool, MaxDepthReachedError>{
+    pub fn insert_or_update_with_max_depth(&self, key: K, value: V, max_depth: u32)  -> Result<bool, MaxDepthReachedError> {
+        self.insert_or_update_if_with_max_depth(key, value, &|_,_| true, max_depth)
+    }
+
+    pub fn insert_or_update_if(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool) -> Result<bool, MaxDepthReachedError>{
+        self.insert_or_update_if_with_max_depth(key, value, should_update, Self::DEFAULT_MAX_DEPTH)
+    }
+    
+    pub fn insert_or_update_if_with_max_depth(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool, max_depth: u32) -> Result<bool, MaxDepthReachedError>{
         if max_depth == 0 {return Err(MaxDepthReachedError)}
         loop{
             match self.0.read().map(|read_lock| {
@@ -113,7 +123,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
                             Some(
                                 //should never be 0
                                 if max_depth < 2 {Err(MaxDepthReachedError)}
-                                else {node.child_nodes[Self::get_index(key, node.key)].insert_or_update_if(key, value, should_update, max_depth - 1)}
+                                else {node.child_nodes[Self::get_index(key, node.key)].insert_or_update_if_with_max_depth(key, value, should_update, max_depth - 1)}
                             )
                         }
                         else {None}
@@ -351,8 +361,8 @@ impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
         self.0.get_next(key).map(|x| x.0)
     }
 
-    pub fn insert(&self, key: K, max_depth: u32) -> Result<(), MaxDepthReachedError>{
-        self.0.insert_or_update_if(key, (), &|_,_| false, max_depth).map(|_| ())
+    pub fn insert(&self, key: K) -> Result<(), MaxDepthReachedError>{
+        self.0.insert_or_update(key, ()).map(|_| ())
     }
 
     pub fn is_empty(&self) -> bool{

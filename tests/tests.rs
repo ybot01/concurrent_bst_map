@@ -1,115 +1,90 @@
-use std::{net::{Ipv6Addr, SocketAddrV6}, time::{Duration, SystemTime, UNIX_EPOCH}};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 use std::sync::{LazyLock, RwLock};
-use ed25519_dalek::{ed25519::SignatureBytes, SecretKey};
+use std::time::SystemTime;
+use rand::distributions::{Distribution, Standard};
 use rand::random;
-use tokio::task::JoinHandle;
 use concurrent_bst::ConcurrentBSTMap;
 
-pub(crate) fn timestamp() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_millis() as u64
+fn should_update<T: Ord>(value_1: &T, value_2: &T) -> bool{
+    value_2 > value_1
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy)]
-pub(crate) struct User{
-    user_id: SecretKey,
-    sock_addr: SocketAddrV6,
-    update_counter: u64,
-    signature: SignatureBytes
-}
-
-impl User{
-    fn random() -> Self{
-        Self{
-            user_id: random(),
-            sock_addr: SocketAddrV6::new(Ipv6Addr::from(random::<[u8;16]>()), random(), 0, 0),
-            update_counter: timestamp(),
-            signature: [0;64]
-        }
-    }
-}
-
-fn should_update(user_1: &User, user_2: &User) -> bool{
-    user_2.update_counter > user_1.update_counter
+fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where Standard: Distribution<T>{
+    let mut to_return = Vec::<T>::new();
+    for _ in 0..length {to_return.push(random())}
+    to_return
 }
 
 #[test]
 fn length_test(){
-    let bst = ConcurrentBSTMap::<SecretKey, User>::new();
-    let mut users = Vec::<User>::new();
     let expected = 10000;
-    for _ in 0..expected {users.push(User::random())}
-    users.iter().for_each(|x| _ = bst.insert_or_update_if(x.user_id, *x, &should_update));
+    let bst = ConcurrentBSTMap::<u64, u64>::new();
+    get_vec_of_key_values::<(u64,u64)>(expected).iter()
+        .for_each(|x| _ = bst.insert_or_update(x.0, x.1, 1000));
     assert_eq!(bst.len(), expected);
 }
 
 #[test]
 fn depth_test(){
-    let bst = ConcurrentBSTMap::<SecretKey, User>::new();
-    let mut users = Vec::<User>::new();
-    let expected = 1000000;
-    for _ in 0..expected {users.push(User::random())}
-    users.iter().for_each(|x| _ = bst.insert_or_update_if(x.user_id, *x, &should_update));
+    let expected = 10000;
+    let bst = ConcurrentBSTMap::<u64, u64>::new();
+    get_vec_of_key_values::<(u64,u64)>(expected).iter()
+        .for_each(|x| _ = bst.insert_or_update(x.0, x.1, 1000));
     println!("{}", bst.depth());
 }
 
 
 #[test]
 fn remove_test(){
-    let bst = ConcurrentBSTMap::<SecretKey, User>::new();
-    let mut users = Vec::<User>::new();
-    for _ in 0..10000 {users.push(User::random())}
-    users.iter().for_each(|x| _ = bst.insert_or_update_if(x.user_id, *x, &should_update));
-    users.iter().for_each(|x| bst.remove(x.user_id));
-    assert!(users.iter().all(|x| bst.get(x.user_id).is_none()));
+    let expected = 10000;
+    let to_insert = get_vec_of_key_values::<(u64,u64)>(expected);
+    let bst = ConcurrentBSTMap::<u64, u64>::new();
+    to_insert.iter().for_each(|x| _ = bst.insert_or_update(x.0, x.1, 1000));
+    to_insert.iter().for_each(|x| bst.remove(x.0));
+    assert!(to_insert.iter().all(|x| bst.get(x.0).is_none()));
 }
 
 #[test]
 fn should_update_test() {
-    let bst = ConcurrentBSTMap::<SecretKey, User>::new();
-    let mut user = User::random();
-    assert!(bst.insert_or_update_if(user.user_id, user, &should_update));
-    user.update_counter += 1;
-    assert!(bst.insert_or_update_if(user.user_id, user, &should_update));
-    user.update_counter -= 1;
-    assert!(!bst.insert_or_update_if(user.user_id, user, &should_update));
+    let bst = ConcurrentBSTMap::<u64, u64>::new();
+    let (key, mut value) = (1000, 0);
+    assert!(bst.insert_or_update_if(key, value, &should_update, 1000));
+    value += 1;
+    assert!(bst.insert_or_update_if(key, value, &should_update, 1000));
+    value -= 1;
+    assert!(!bst.insert_or_update_if(key, value, &should_update, 1000));
 }
 
 #[test]
 fn insert_and_get_test() {
-    let bst = ConcurrentBSTMap::<SecretKey, User>::new();
-    let user = User::random();
-    bst.insert_or_update_if(user.user_id, user, &should_update);
-    assert!(bst.get(user.user_id).is_some_and(|x| x == user));
+    let bst = ConcurrentBSTMap::<u64, u64>::new();
+    _ = bst.insert_or_update(0, 1, 1000);
+    assert!(bst.get(0).is_some_and(|x| x == 1));
 }
 
 #[test]
 fn bench_insert_or_update_if(){
-    let bst = ConcurrentBSTMap::<SecretKey, User>::new();
-    let mut user = User::random();
+    let bst = ConcurrentBSTMap::<u64, u64>::new();
+    let (key, mut value) = (1000, 0);
     let mut true_count = 0;
     let total = 1000000;
     let start_time = SystemTime::now();
     for _ in 0..total{
-        if bst.insert_or_update_if(user.user_id, user, &should_update) {true_count += 1};
+        if bst.insert_or_update_if(key, value, &should_update, 1000) {true_count += 1};
         user.update_counter += 1;
     }
     println!("{}", total as f64 / SystemTime::now().duration_since(start_time).unwrap().as_secs_f64());
     assert_eq!(true_count, total);
 }
 
-static GLOBAL_BST: ConcurrentBSTMap<SecretKey, User> = ConcurrentBSTMap::<SecretKey, User>::new();
+static GLOBAL_BST: ConcurrentBSTMap<u64, u64> = ConcurrentBSTMap::new();
 
 static TRUE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 const NO_THREADS: usize = 10;
 const TOTAL_PER_THREAD: usize = 100000;
 
-static USER_LIST: LazyLock<RwLock<Vec<User>>> = LazyLock::new(|| {
-    let mut list = Vec::<User>::new();
-    for _ in 0..(NO_THREADS*TOTAL_PER_THREAD) {list.push(User::random())}
-    RwLock::new(list)
-});
+static USER_LIST: LazyLock<RwLock<Vec<(u64, u64)>>> = LazyLock::new(|| RwLock::new(get_vec_of_key_values(NO_THREADS*TOTAL_PER_THREAD)));
 
 #[test]
 fn bench_multi_thread_insert_or_update_if_and_remove(){
@@ -171,3 +146,4 @@ fn bench_multi_thread_insert_or_update_if_and_remove(){
             println!("{}", (NO_THREADS*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
         });
 }
+*/
