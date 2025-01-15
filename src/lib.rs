@@ -88,11 +88,19 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
     }
 
     pub fn get_min(&self) -> Option<(K,V)>{
+        self.get_min_or_max(true)
+    }
+
+    pub fn get_max(&self) -> Option<(K,V)>{
+        self.get_min_or_max(false)
+    }
+
+    fn get_min_or_max(&self, min: bool) -> Option<(K,V)>{
         self.0.read().map(|read_lock| {
             match &*read_lock{
                 None => None,
                 Some(node) => {
-                    Some(node.child_nodes[0].get_min().unwrap_or((node.key, node.value)))
+                    Some(node.child_nodes[if min {0} else {1}].get_min_or_max(min).unwrap_or((node.key, node.value)))
                 }
             }
         }).unwrap()
