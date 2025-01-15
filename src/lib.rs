@@ -179,10 +179,10 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
     }
 
     pub fn remove(&self, key: K){
-        self.remove_if(key, &|_| true)
+        self.remove_if(key, &|_, _| true)
     }
     
-    pub fn remove_if(&self, key: K, should_remove: &impl Fn(&V) -> bool){
+    pub fn remove_if(&self, key: K, should_remove: &impl Fn(&K, &V) -> bool){
         loop{
             if self.0.read().map(|read_lock| {
                 match &*read_lock{
@@ -202,7 +202,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
                     Some(node) => {
                         //if a different key than before then retry the read lock
                         if node.key != key {false}
-                        else if should_remove(&node.value){
+                        else if should_remove(&node.key, &node.value){
                             match node.child_nodes[1].get_replacement_key_value(true)
                                 .or(node.child_nodes[0].get_replacement_key_value(false)) {
                                 None => *write_lock = None,
@@ -217,9 +217,9 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         }
     }
 
-    pub fn retain(&self, criteria: &impl Fn((K, V)) -> bool){
-        self.iter().for_each(|x| {
-            if criteria(x){
+    pub fn retain(&self, criteria: &impl Fn(&K, &V) -> bool){
+        self.iter().for_each(|(key, value)| {
+            if criteria(&key, &value){
                 //delete
             }
         });
@@ -326,36 +326,63 @@ impl<'a, K: Copy + Ord + Sub<Output = K>, V: Copy> Iterator for ConcurrentBSTMap
 pub struct ConcurrentBSTSet<K>(ConcurrentBSTMap<K, ()>);
 
 impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
-    
-    pub const fn new() -> Self{
-        Self(ConcurrentBSTMap::new())
-    }
 
     pub fn clear(&self){
         self.0.clear();
-    }
-
-    pub fn is_empty(&self) -> bool{
-        self.0.is_empty()
-    }
-
-    pub fn len(&self) -> usize{
-        self.0.len()
-    }
-
-    pub fn depth(&self) -> u32{
-        self.0.depth()
     }
 
     pub fn contains_key(&self, key: K) -> bool{
         self.0.contains_key(key)
     }
 
+    pub fn depth(&self) -> u32{
+        self.0.depth()
+    }
+    
+    pub fn get_max(&self) -> Option<K>{
+        self.0.get_max().map(|x| x.0)
+    }
+
+    pub fn get_min(&self) -> Option<K>{
+        self.0.get_min().map(|x| x.0)
+    }
+    
+    pub fn get_next(&self, key: K) -> Option<K>{
+        self.0.get_next(key).map(|x| x.0)
+    }
+
     pub fn insert(&self, key: K, max_depth: u32) -> Result<(), MaxDepthReachedError>{
         self.0.insert_or_update_if(key, (), &|_,_| false, max_depth).map(|_| ())
     }
+
+    pub fn is_empty(&self) -> bool{
+        self.0.is_empty()
+    }
+
+    pub fn iter(&self) -> ConcurrentBSTMapIterator<K, ()>{
+        ConcurrentBSTMapIterator{
+            map: &self.0,
+            current_key: self.get_min()
+        }
+    }
+
+    pub fn len(&self) -> usize{
+        self.0.len()
+    }
     
+    pub const fn new() -> Self{
+        Self(ConcurrentBSTMap::new())
+    }
+
     pub fn remove(&self, key: K){
-        self.0.remove(key)
+        self.remove_if(key, &|_| true)
+    }
+
+    pub fn remove_if(&self, key: K, should_remove: &impl Fn(&K) -> bool){
+        self.0.remove_if(key, &|x, _| should_remove(x))
+    }
+
+    pub fn retain(&self, criteria: &impl Fn(&K) -> bool){
+        self.0.retain(&|x, _| criteria(x))
     }
 }
