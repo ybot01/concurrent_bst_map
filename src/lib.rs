@@ -235,8 +235,12 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         self.remove_if(key, &|_| true)
     }
 
-    pub fn retain(&self, criteria: &impl Fn(&V) -> bool){
-        
+    pub fn retain(&self, criteria: &impl Fn((K, V)) -> bool){
+        self.iter().for_each(|x| {
+            if criteria(x){
+                //delete
+            }
+        });
     }
 
     pub fn iter(&self) -> ConcurrentBSTMapIterator<K, V>{
