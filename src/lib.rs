@@ -99,10 +99,9 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
                 Some(node) => {
                     let index = Self::get_index(key, node.key);
                     [
-                        Some((node.key, node.value, is_final_node)),
+                        if (node.key > key) || (include_key && (node.key == key)) {Some((node.key, node.value, is_final_node))} else {None},
                         node.child_nodes[index].internal_get_or_next_by_key(key, include_key, (index == 1) && is_final_node)
                     ].iter().filter_map(|x| *x)
-                    .filter(|x| if include_key {x.0 >= key} else {x.0 > key})
                     .min_by_key(|x| x.0 - key)
                 }
             }
