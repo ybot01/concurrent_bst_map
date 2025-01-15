@@ -34,13 +34,16 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTInternal<K,V>{
 #[allow(non_snake_case)]
 pub const fn ALWAYS_UPDATE<T>(_: &T, _: &T) -> bool {true}
 
+#[allow(non_snake_case)]
+pub const fn NEVER_UPDATE<T>(_: &T, _: &T) -> bool {false}
+
+pub const DEFAULT_MAX_DEPTH: u32 = 500;
+
 #[derive(Debug)]
 pub struct ConcurrentBSTMap<K,V>(RwLock<Option<Box<ConcurrentBSTInternal<K,V>>>>);
 
 impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
-
-    const DEFAULT_MAX_DEPTH: u32 = 500;
-
+    
     pub fn clear(&self){
         *self.0.write().unwrap() = None;
     }
@@ -55,6 +58,23 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
                 }
             }
         }).unwrap()
+    }
+
+    pub fn copy(&self, rand_index_func: impl Fn(usize) -> usize) -> Self{
+        let mut new_bst = ConcurrentBSTMap::new();
+        let mut all_key_values = self.get_all_key_values();
+        let (mut key, mut value);
+        let mut error = true;
+        while error{
+            error = false;
+            new_bst = ConcurrentBSTMap::new();
+            while (all_key_values.len() > 0) && !error{
+                (key, value) = all_key_values.swap_remove(rand_index_func(all_key_values.len()));
+                if new_bst.insert_or_update(key, value, &NEVER_UPDATE, DEFAULT_MAX_DEPTH).is_err() {error = true}
+            }
+            
+        }
+        new_bst
     }
 
     pub fn depth(&self) -> u32{
@@ -75,6 +95,20 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
                 Some(node) => {
                     if node.key == key {Some(node.value)}
                     else {node.child_nodes[Self::get_index(key, node.key)].get(key)}
+                }
+            }
+        }).unwrap()
+    }
+
+    pub fn get_all_key_values(&self) -> Vec<(K,V)>{
+        self.0.read().map(|read_lock| {
+            match &*read_lock {
+                None => Vec::new(),
+                Some(node) => {
+                    let mut all = node.child_nodes[0].get_all_key_values();
+                    all.extend(node.child_nodes[1].get_all_key_values());
+                    all.push((node.key, node.value));
+                    all
                 }
             }
         }).unwrap()
@@ -103,19 +137,18 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         }).unwrap()
     }
 
-    pub fn insert_or_update(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool, max_depth: Option<u32>) -> Result<bool, MaxDepthReachedError>{
-        if max_depth.is_some_and(|x| x == 0) {return Err(MaxDepthReachedError)}
+    pub fn insert_or_update(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool, max_depth: u32) -> Result<bool, MaxDepthReachedError>{
+        if max_depth == 0 {return Err(MaxDepthReachedError)}
         loop{
             match self.0.read().map(|read_lock| {
                 match &*read_lock{
                     None => None,
                     Some(node) => {
                         if node.key != key {
-                            let new_max_depth = max_depth.unwrap_or(Self::DEFAULT_MAX_DEPTH);
                             Some(
                                 //should never be 0
-                                if new_max_depth < 2 {Err(MaxDepthReachedError)}
-                                else {node.child_nodes[Self::get_index(key, node.key)].insert_or_update(key, value, should_update, Some(new_max_depth - 1))}
+                                if max_depth < 2 {Err(MaxDepthReachedError)}
+                                else {node.child_nodes[Self::get_index(key, node.key)].insert_or_update(key, value, should_update, max_depth - 1)}
                             )
                         }
                         else {None}
@@ -354,7 +387,7 @@ impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
     }
 
     pub fn insert(&self, key: K) -> Result<(), MaxDepthReachedError>{
-        self.0.insert_or_update(key, (), &ALWAYS_UPDATE, None).map(|_| ())
+        self.0.insert_or_update(key, (), &ALWAYS_UPDATE, DEFAULT_MAX_DEPTH).map(|_| ())
     }
 
     pub fn is_empty(&self) -> bool{
