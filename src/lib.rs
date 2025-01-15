@@ -92,24 +92,34 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         else {item_1 - item_2}
     }
 
-    pub fn get_or_next_by_key(&self, key: K, include_key: bool, min_if_end: bool) -> Option<(K,V)>{
+    fn internal_get_or_next_by_key(&self, key: K, include_key: bool, is_final_node: bool) -> Option<(K, V, bool)>{
         self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
                 Some(node) => {
                     let index = Self::get_index(key, node.key);
-                    let child_result = node.child_nodes[index].get_or_next_by_key(key, include_key, (index == 1) && min_if_end);
-                    if (index == 1) && child_result.is_none() && min_if_end{
-                        child_result = //get left most node
-                    }
                     [
-                        if !include_key && (node.key == key) {None} else {Some((node.key, node.value))},
-                        child_result
+                        Some((node.key, node.value, is_final_node)),
+                        node.child_nodes[index].internal_get_or_next_by_key(key, include_key, (index == 1) && is_final_node)
                     ].iter().filter_map(|x| *x)
-                    .min_by_key(|x| Self::abs_diff(key, x.0))
+                    .filter(|x| if include_key {x.0 >= key} else {x.0 > key})
+                    .min_by_key(|x| x.0 - key)
                 }
             }
         }).unwrap()
+    }
+
+    pub fn get_or_next_by_key(&self, key: K, include_key: bool, min_if_end: bool) -> Option<(K, V)>{
+        match self.internal_get_or_next_by_key(key, include_key, min_if_end){
+            None => None,
+            Some(result) => {
+                match result{
+                    (r_key, r_value, false) => Some((r_key, r_value)),
+                    (_, _, true) => self.get_min_by_key()
+                }
+            }
+            
+        }
     }
     
     pub fn insert_or_update(&self, key: K, value: V)  -> bool{
