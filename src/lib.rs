@@ -92,33 +92,19 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         else {item_1 - item_2}
     }
 
-    fn internal_get_or_next_by_key(&self, key: K, include_key: bool, is_final_node: bool) -> Option<(K, V, bool)>{
+    fn get_next_for_iter(&self, key: K) -> Option<(K, V)>{
         self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
                 Some(node) => {
-                    let index = Self::get_index(key, node.key);
                     [
-                        if (node.key > key) || (include_key && (node.key == key)) {Some((node.key, node.value, is_final_node))} else {None},
-                        node.child_nodes[index].internal_get_or_next_by_key(key, include_key, (index == 1) && is_final_node)
+                        if node.key > key {Some((node.key, node.value))} else {None},
+                        node.child_nodes[Self::get_index(key, node.key)].get_next_for_iter(key)
                     ].iter().filter_map(|x| *x)
                     .min_by_key(|x| x.0 - key)
                 }
             }
         }).unwrap()
-    }
-
-    pub fn get_or_next_by_key(&self, key: K, include_key: bool, min_if_end: bool) -> Option<(K, V)>{
-        match self.internal_get_or_next_by_key(key, include_key, min_if_end){
-            None => None,
-            Some(result) => {
-                match result{
-                    (r_key, r_value, false) => Some((r_key, r_value)),
-                    (_, _, true) => self.get_min_by_key()
-                }
-            }
-            
-        }
     }
     
     pub fn insert_or_update(&self, key: K, value: V)  -> bool{
@@ -247,7 +233,7 @@ impl<'a, K: Copy + Ord + Sub<Output = K>, V: Copy> Iterator for ConcurrentBSTMap
         match self.current_key{
             None => None,
             Some(current_key) => {
-                let next_key_value = self.map.get_or_next_by_key(current_key, false, false);
+                let next_key_value = self.map.get_next_for_iter(current_key);
                 self.current_key = next_key_value.map(|x| x.0);
                 next_key_value
             }
@@ -282,10 +268,6 @@ impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
 
     pub fn contains_key(&self, key: K) -> bool{
         self.0.contains_key(key)
-    }
-
-    pub fn get_or_next(&self, key: K, min_if_end: bool) -> Option<K>{
-        self.0.get_or_next_by_key(key, true, min_if_end).map(|x| x.0)
     }
 
     pub fn insert(&self, key: K){
