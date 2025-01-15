@@ -97,17 +97,14 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
             match &*read_lock {
                 None => None,
                 Some(node) => {
-                    let right_result = node.child_nodes[1].get_or_next_by_key(key, include_key, min_if_end);
+                    let index = Self::get_index(key, node.key);
+                    let child_result = node.child_nodes[index].get_or_next_by_key(key, include_key, (index == 1) && min_if_end);
+                    if (index == 1) && child_result.is_none() && min_if_end{
+                        child_result = //get left most node
+                    }
                     [
                         if !include_key && (node.key == key) {None} else {Some((node.key, node.value))},
-                        node.child_nodes[0].get_or_next_by_key(key, include_key, false),
-                        right_result,
-                        //check if at right most node
-                        if right_result.is_none() && min_if_end{
-                            //check left most node of the tree
-                            //results[3] = 
-                        }
-                        else {None}
+                        child_result
                     ].iter().filter_map(|x| *x)
                     .min_by_key(|x| Self::abs_diff(key, x.0))
                 }
