@@ -61,20 +61,18 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
     }
 
     pub fn copy(&self, rand_index_func: impl Fn(usize) -> usize) -> Self{
-        let mut new_bst = ConcurrentBSTMap::new();
         let mut all_key_values = self.get_all_key_values();
-        let (mut key, mut value);
-        let mut error = true;
-        while error{
-            error = false;
-            new_bst = ConcurrentBSTMap::new();
+        loop{
+            let mut error = false;
+            let new_bst = ConcurrentBSTMap::new();
+            let (mut key, mut value);
             while (all_key_values.len() > 0) && !error{
                 (key, value) = all_key_values.swap_remove(rand_index_func(all_key_values.len()));
                 if new_bst.insert_or_update(key, value, &NEVER_UPDATE, DEFAULT_MAX_DEPTH).is_err() {error = true}
             }
-            
+            if !error {return new_bst}
         }
-        new_bst
+        
     }
 
     pub fn depth(&self) -> u32{
