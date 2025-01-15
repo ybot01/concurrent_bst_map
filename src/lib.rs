@@ -31,6 +31,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTInternal<K,V>{
     }
 }
 
+#[allow(non_snake_case)]
 pub const fn ALWAYS_UPDATE<T>(_: &T, _: &T) -> bool {true}
 
 #[derive(Debug)]
@@ -226,10 +227,10 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         });
     }
 
-    fn abs_diff<T: Ord + Sub<Output = T>>(item_1: T, item_2: T) -> T{
+    /*fn abs_diff<T: Ord + Sub<Output = T>>(item_1: T, item_2: T) -> T{
         if item_2 > item_1 {item_2 - item_1}
         else {item_1 - item_2}
-    }
+    }*/
 
     fn get_index(target: K, current: K) -> usize{
         if target < current {0} else {1}
