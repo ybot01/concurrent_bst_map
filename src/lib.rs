@@ -247,6 +247,39 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
     }
 }
 
+impl<K: Copy + Ord + Sub<Output = K>, V: Copy> IntoIterator for ConcurrentBSTMap<K, V>{
+    type Item = (K, V);
+
+    type IntoIter = ConcurrentBSTMapIntoIterator<K, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        ConcurrentBSTMapIntoIterator{
+            current_key: self.get_min().map(|x| x.0),
+            map: self
+        }
+    }
+}
+
+pub struct ConcurrentBSTMapIntoIterator<K, V> {
+    map: ConcurrentBSTMap<K,V>,
+    current_key: Option<K>
+}
+
+impl<K: Copy + Ord + Sub<Output = K>, V: Copy> Iterator for ConcurrentBSTMapIntoIterator<K, V>{
+    type Item = (K,V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.current_key{
+            None => None,
+            Some(current_key) => {
+                let next_key_value = self.map.get_next_for_iter(current_key);
+                self.current_key = next_key_value.map(|x| x.0);
+                next_key_value
+            }
+        }
+    }
+}
+
 pub struct ConcurrentBSTMapIterator<'a, K, V> {
     map: &'a ConcurrentBSTMap<K,V>,
     current_key: Option<K>
