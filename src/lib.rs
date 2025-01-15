@@ -143,6 +143,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
     }
 
     pub fn insert_or_update_if(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool, max_depth: u32) -> Result<bool, MaxDepthReachedError>{
+        if max_depth == 0 {return Err(MaxDepthReachedError)}
         loop{
             match self.0.read().map(|read_lock| {
                 match &*read_lock{
@@ -150,7 +151,8 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
                     Some(node) => {
                         if node.key != key {
                             Some(
-                                if max_depth == 0 {Err(MaxDepthReachedError)}
+                                //should never be 0
+                                if max_depth < 2 {Err(MaxDepthReachedError)}
                                 else {node.child_nodes[Self::get_index(key, node.key)].insert_or_update_if(key, value, should_update, max_depth - 1)}
                             )
                         }
@@ -165,13 +167,8 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
                 match &mut *write_lock{
                     None => {
                         //insert
-                        Some(
-                            if max_depth == 0 {Err(MaxDepthReachedError)}
-                            else{
-                                *write_lock = Some(Box::new(ConcurrentBSTInternal::new(key, value)));
-                                Ok(true)
-                            }
-                        )
+                        *write_lock = Some(Box::new(ConcurrentBSTInternal::new(key, value)));
+                        Some(Ok(true))
                     }
                     Some(node) => {
                         //if a different key than before then retry the read lock
