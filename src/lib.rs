@@ -119,6 +119,21 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         self.get_min_or_max(true)
     }
 
+    fn get_nearest_internal(&self, key: K, include_key: bool, first_node: bool, last_node: bool) -> Option<(K, V, bool, bool)>{
+        self.0.read().map(|read_lock| {
+            match &*read_lock {
+                None => None,
+                Some(node) => {
+                    
+                }
+            }
+        }).unwrap()
+    }
+
+    pub fn get_nearest(&self, key: K, include_key: bool) -> Option<(K, V)>{
+        self.get_nearest_internal(key, include_key, true, true)
+    }
+
     pub fn get_next(&self, key: K) -> Option<(K, V)>{
         self.0.read().map(|read_lock| {
             match &*read_lock {
