@@ -2,10 +2,10 @@ use std::fmt;
 use std::ops::Sub;
 use std::sync::RwLock;
 
-pub trait Values<T>{
-    const MAX: T;
-    const ONE: T;
-    const ZERO: T;
+pub trait Values{
+    const MAX: Self;
+    const ONE: Self;
+    const ZERO: Self;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -26,7 +26,7 @@ struct ConcurrentBSTInternal<K,V>{
     child_nodes: [ConcurrentBSTMap<K,V>; 2]
 }
 
-impl<K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> ConcurrentBSTInternal<K,V>{
+impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTInternal<K,V>{
     
     const fn new(key: K, value: V) -> Self {
         Self {
@@ -48,7 +48,7 @@ pub const DEFAULT_MAX_DEPTH: u32 = 500;
 #[derive(Debug)]
 pub struct ConcurrentBSTMap<K,V>(RwLock<Option<Box<ConcurrentBSTInternal<K,V>>>>);
 
-impl<K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> ConcurrentBSTMap<K,V>{
+impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
     
     pub fn clear(&self){
         *self.0.write().unwrap() = None;
@@ -125,7 +125,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> ConcurrentBSTMap<K,V>
         self.get_min_or_max(true)
     }
 
-    fn get_or_closest_by_key_internal(&self, key: K, closest: (K, V), include_key: bool, all_left: bool, all_right: bool) -> Option<((K, V), bool, bool)>{
+    fn get_or_closest_by_key_internal(&self, key: K, closest: (K, V), include_key: bool, all_left: bool, all_right: bool) -> Option<((K, V), bool, bool)> where K: Values{
         self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
@@ -150,7 +150,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> ConcurrentBSTMap<K,V>
         }).unwrap()
     }
 
-    pub fn get_or_closest_by_key(&self, key: K, include_key: bool) -> Option<(K, V)>{
+    pub fn get_or_closest_by_key(&self, key: K, include_key: bool) -> Option<(K, V)> where K: Values{
         match self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
@@ -322,7 +322,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> ConcurrentBSTMap<K,V>
         });
     }
 
-    fn closest_dist(item_1: K, item_2: K) -> K{
+    fn closest_dist(item_1: K, item_2: K) -> K where K: Values{
         let diff = if item_2 > item_1 {item_2 - item_1} else if item_1 > item_2 {item_1 - item_2} else {return K::ZERO};
         diff.min(K::MAX - (diff - K::ONE))
     }
@@ -366,7 +366,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> ConcurrentBSTMap<K,V>
     }
 }
 
-impl<K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> IntoIterator for ConcurrentBSTMap<K, V>{
+impl<K: Copy + Ord + Sub<Output = K>, V: Copy> IntoIterator for ConcurrentBSTMap<K, V>{
     type Item = (K, V);
 
     type IntoIter = ConcurrentBSTMapIntoIterator<K, V>;
@@ -384,7 +384,7 @@ pub struct ConcurrentBSTMapIntoIterator<K, V> {
     current_key: Option<K>
 }
 
-impl<K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> Iterator for ConcurrentBSTMapIntoIterator<K, V>{
+impl<K: Copy + Ord + Sub<Output = K>, V: Copy> Iterator for ConcurrentBSTMapIntoIterator<K, V>{
     type Item = (K,V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -404,7 +404,7 @@ pub struct ConcurrentBSTMapIterator<'a, K, V> {
     current_key: Option<K>
 }
 
-impl<'a, K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, K, V>{
+impl<'a, K: Copy + Ord + Sub<Output = K>, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, K, V>{
     type Item = (K,V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -422,7 +422,7 @@ impl<'a, K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> Iterator for Conc
 #[derive(Debug)]
 pub struct ConcurrentBSTSet<K>(ConcurrentBSTMap<K, ()>);
 
-impl<K: Copy + Ord + Sub<Output = K> + Values<K>> ConcurrentBSTSet<K>{
+impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
 
     pub fn clear(&self){
         self.0.clear();

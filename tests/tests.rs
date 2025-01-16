@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime};
 use rand::distributions::{Distribution, Standard};
 use rand::random;
 use tokio::task::JoinHandle;
-use concurrent_bst_map::{ConcurrentBSTMap, ALWAYS_UPDATE, DEFAULT_MAX_DEPTH};
+use concurrent_bst_map::{ConcurrentBSTMap, Values, ALWAYS_UPDATE, DEFAULT_MAX_DEPTH};
 
 fn should_update<T: Ord>(value_1: &T, value_2: &T) -> bool{
     value_2 > value_1
