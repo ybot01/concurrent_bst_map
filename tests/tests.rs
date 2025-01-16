@@ -15,7 +15,7 @@ fn should_update<T: Ord>(value_1: &T, value_2: &T) -> bool{
 struct U64Wrapper(u64);
 
 impl Distribution<U64Wrapper> for Standard{
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> U64Wrapper {
+    fn sample<R: Rng + ?Sized>(&self, _: &mut R) -> U64Wrapper {
         U64Wrapper::from(random::<u64>())
     }
 }
