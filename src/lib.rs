@@ -2,6 +2,12 @@ use std::fmt;
 use std::ops::Sub;
 use std::sync::RwLock;
 
+pub trait Values<T>{
+    const MAX: T;
+    const ONE: T;
+    const ZERO: T;
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct MaxDepthReachedError;
 
@@ -20,7 +26,7 @@ struct ConcurrentBSTInternal<K,V>{
     child_nodes: [ConcurrentBSTMap<K,V>; 2]
 }
 
-impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTInternal<K,V>{
+impl<K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> ConcurrentBSTInternal<K,V>{
     
     const fn new(key: K, value: V) -> Self {
         Self {
@@ -42,7 +48,7 @@ pub const DEFAULT_MAX_DEPTH: u32 = 500;
 #[derive(Debug)]
 pub struct ConcurrentBSTMap<K,V>(RwLock<Option<Box<ConcurrentBSTInternal<K,V>>>>);
 
-impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
+impl<K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> ConcurrentBSTMap<K,V>{
     
     pub fn clear(&self){
         *self.0.write().unwrap() = None;
@@ -119,19 +125,63 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         self.get_min_or_max(true)
     }
 
-    fn get_nearest_internal(&self, key: K, include_key: bool, first_node: bool, last_node: bool) -> Option<(K, V, bool, bool)>{
+    fn get_or_closest_by_key_internal(&self, key: K, closest: (K, V), include_key: bool, all_left: bool, all_right: bool) -> Option<((K, V), bool, bool)>{
         self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
                 Some(node) => {
-                    
+                    let new_closest = if ((node.key != key) || include_key) && (Self::closest_dist(key, node.key) < Self::closest_dist(key, closest.0)) {(node.key, node.value)} else {closest};
+                    let index = Self::get_index(key, node.key);
+                    Some(
+                        node.child_nodes[index].get_or_closest_by_key_internal(
+                            key,
+                            new_closest,
+                            include_key,
+                            (index == 0) && all_left,
+                            (index == 1) && all_right
+                        ).unwrap_or((
+                            new_closest,
+                            all_left && node.child_nodes[0].0.read().unwrap().is_none(),
+                            all_right && node.child_nodes[1].0.read().unwrap().is_none()
+                        ))
+                    )
                 }
             }
         }).unwrap()
     }
 
-    pub fn get_nearest(&self, key: K, include_key: bool) -> Option<(K, V)>{
-        self.get_nearest_internal(key, include_key, true, true)
+    pub fn get_or_closest_by_key(&self, key: K, include_key: bool) -> Option<(K, V)>{
+        match self.0.read().map(|read_lock| {
+            match &*read_lock {
+                None => None,
+                Some(node) => {
+                    let key_value = (node.key, node.value);
+                    let index = Self::get_index(key, node.key);
+                    Some(
+                        node.child_nodes[Self::get_index(key, node.key)].get_or_closest_by_key_internal(
+                            key,
+                            key_value,
+                            include_key,
+                            index == 0,
+                            index == 1
+                        ).unwrap_or((key_value, false, false))
+                    )
+                }
+            }
+        }).unwrap(){
+            None => None,
+            Some((key_value, is_min, is_max)) => {
+                Some(
+                    if key_value.0 == key {key_value}
+                    else{
+                        match if is_min {self.get_max()} else if is_max {self.get_min()} else {None}{
+                            None => key_value,
+                            Some(result) => if Self::closest_dist(key, result.0) < Self::closest_dist(key, key_value.0) {result} else{key_value}
+                        }
+                    }
+                )
+            }
+        }
     }
 
     pub fn get_next(&self, key: K) -> Option<(K, V)>{
@@ -272,10 +322,10 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
         });
     }
 
-    /*fn abs_diff<T: Ord + Sub<Output = T>>(item_1: T, item_2: T) -> T{
-        if item_2 > item_1 {item_2 - item_1}
-        else {item_1 - item_2}
-    }*/
+    fn closest_dist(item_1: K, item_2: K) -> K{
+        let diff = if item_2 > item_1 {item_2 - item_1} else if item_1 > item_2 {item_1 - item_2} else {return K::ZERO};
+        diff.min(K::MAX - (diff - K::ONE))
+    }
 
     fn get_index(target: K, current: K) -> usize{
         if target < current {0} else {1}
@@ -316,7 +366,7 @@ impl<K: Copy + Ord + Sub<Output = K>, V: Copy> ConcurrentBSTMap<K,V>{
     }
 }
 
-impl<K: Copy + Ord + Sub<Output = K>, V: Copy> IntoIterator for ConcurrentBSTMap<K, V>{
+impl<K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> IntoIterator for ConcurrentBSTMap<K, V>{
     type Item = (K, V);
 
     type IntoIter = ConcurrentBSTMapIntoIterator<K, V>;
@@ -334,7 +384,7 @@ pub struct ConcurrentBSTMapIntoIterator<K, V> {
     current_key: Option<K>
 }
 
-impl<K: Copy + Ord + Sub<Output = K>, V: Copy> Iterator for ConcurrentBSTMapIntoIterator<K, V>{
+impl<K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> Iterator for ConcurrentBSTMapIntoIterator<K, V>{
     type Item = (K,V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -354,7 +404,7 @@ pub struct ConcurrentBSTMapIterator<'a, K, V> {
     current_key: Option<K>
 }
 
-impl<'a, K: Copy + Ord + Sub<Output = K>, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, K, V>{
+impl<'a, K: Copy + Ord + Sub<Output = K> + Values<K>, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, K, V>{
     type Item = (K,V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -372,7 +422,7 @@ impl<'a, K: Copy + Ord + Sub<Output = K>, V: Copy> Iterator for ConcurrentBSTMap
 #[derive(Debug)]
 pub struct ConcurrentBSTSet<K>(ConcurrentBSTMap<K, ()>);
 
-impl<K: Copy + Ord + Sub<Output = K>> ConcurrentBSTSet<K>{
+impl<K: Copy + Ord + Sub<Output = K> + Values<K>> ConcurrentBSTSet<K>{
 
     pub fn clear(&self){
         self.0.clear();
