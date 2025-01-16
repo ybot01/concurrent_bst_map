@@ -1,8 +1,11 @@
 use std::fmt;
+use std::ops::Sub;
 use std::sync::RwLock;
 
-pub trait ConvertToBytes{
-    fn convert_to_bytes(&self) -> [u8; 64];
+pub trait Values{
+    const MAX: Self;
+    const ONE: Self;
+    const ZERO: Self;
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -18,16 +21,16 @@ impl std::error::Error for MaxDepthReachedError {}
 
 #[derive(Debug)]
 struct ConcurrentBSTInternal<K,V>{
-    key: [u8; 64],
+    key: K,
     value: V,
     child_nodes: [ConcurrentBSTMap<K,V>; 2]
 }
 
-impl<K: Copy + ConvertToBytes, V: Copy> ConcurrentBSTInternal<K,V>{
+impl<K: Copy + Ord + Sub<Output = K> + Values, V: Copy> ConcurrentBSTInternal<K,V>{
     
     fn new(key: K, value: V) -> Self {
         Self {
-            key: key.convert_to_bytes(),
+            key,
             value,
             child_nodes: [const { ConcurrentBSTMap::new() }; 2]
         }
@@ -45,19 +48,18 @@ pub const DEFAULT_MAX_DEPTH: u32 = 500;
 #[derive(Debug)]
 pub struct ConcurrentBSTMap<K,V>(RwLock<Option<Box<ConcurrentBSTInternal<K,V>>>>);
 
-impl<K: Copy + ConvertToBytes, V: Copy> ConcurrentBSTMap<K,V>{
+impl<K: Copy + Ord + Sub<Output = K> + Values, V: Copy> ConcurrentBSTMap<K,V>{
     
     pub fn clear(&self){
         *self.0.write().unwrap() = None;
     }
 
     pub fn contains_key(&self, key: K) -> bool{
-        let key_as_bytes = key.convert_to_bytes();
         self.0.read().map(|read_lock| {
             match &*read_lock{
                 None => false,
                 Some(node) => {
-                    if node.key == key_as_bytes {true}
+                    if node.key == key {true}
                     else {node.child_nodes[Self::get_index(key, node.key)].contains_key(key)}
                 }
             }
@@ -334,7 +336,7 @@ impl<K: Copy + ConvertToBytes, V: Copy> ConcurrentBSTMap<K,V>{
         if item_2 > item_1 {item_2 - item_1} else {item_1 - item_2}
     }
     
-    fn get_index(target: [u8;64], current: [u8;64]) -> usize{
+    fn get_index(target: K, current: K) -> usize{
         if target < current {0} else {1}
     }
 
@@ -373,7 +375,7 @@ impl<K: Copy + ConvertToBytes, V: Copy> ConcurrentBSTMap<K,V>{
     }
 }
 
-impl<K: Copy, V: Copy> IntoIterator for ConcurrentBSTMap<K, V>{
+impl<K: Copy + Ord + Sub<Output = K> + Values, V: Copy> IntoIterator for ConcurrentBSTMap<K, V>{
     type Item = (K, V);
 
     type IntoIter = ConcurrentBSTMapIntoIterator<K, V>;
@@ -391,7 +393,7 @@ pub struct ConcurrentBSTMapIntoIterator<K, V> {
     current_key: Option<K>
 }
 
-impl<K: Copy, V: Copy> Iterator for ConcurrentBSTMapIntoIterator<K, V>{
+impl<K: Copy + Ord + Sub<Output = K> + Values, V: Copy> Iterator for ConcurrentBSTMapIntoIterator<K, V>{
     type Item = (K,V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -411,7 +413,7 @@ pub struct ConcurrentBSTMapIterator<'a, K, V> {
     current_key: Option<K>
 }
 
-impl<'a, K: Copy, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, K, V>{
+impl<'a, K: Copy + Ord + Sub<Output = K> + Values, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, K, V>{
     type Item = (K,V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -429,7 +431,7 @@ impl<'a, K: Copy, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, K, V>{
 #[derive(Debug)]
 pub struct ConcurrentBSTSet<K>(ConcurrentBSTMap<K, ()>);
 
-impl<K: Copy> ConcurrentBSTSet<K>{
+impl<K: Copy + Ord + Sub<Output = K> + Values> ConcurrentBSTSet<K>{
 
     pub fn clear(&self){
         self.0.clear();
