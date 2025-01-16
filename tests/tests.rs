@@ -1,3 +1,4 @@
+use std::ops::Sub;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, RwLock};
 use std::time::{Duration, SystemTime};
@@ -10,6 +11,29 @@ fn should_update<T: Ord>(value_1: &T, value_2: &T) -> bool{
     value_2 > value_1
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct U64Wrapper(u64);
+
+impl Sub for U64Wrapper {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        U64Wrapper::from(self.0 - rhs.0)
+    }
+}
+
+impl Values for U64Wrapper{
+    const MAX: Self = U64Wrapper::from(u64::MAX);
+    const ONE: Self = U64Wrapper::from(1);
+    const ZERO: Self = U64Wrapper::from(0);
+}
+
+impl U64Wrapper{
+    const fn from(value: u64) -> Self{
+        U64Wrapper(value)
+    }
+}
+
 fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where Standard: Distribution<T>{
     let mut to_return = Vec::<T>::new();
     for _ in 0..length {to_return.push(random())}
@@ -19,8 +43,8 @@ fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where Standard: Distributio
 #[test]
 fn length_test(){
     let expected = 10000;
-    let bst = ConcurrentBSTMap::<u64, u64>::new();
-    get_vec_of_key_values::<(u64,u64)>(expected).iter()
+    let bst = ConcurrentBSTMap::<U64Wrapper, u64>::new();
+    get_vec_of_key_values::<(U64Wrapper,u64)>(expected).iter()
         .for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE, DEFAULT_MAX_DEPTH));
     assert_eq!(bst.len(), expected);
 }
