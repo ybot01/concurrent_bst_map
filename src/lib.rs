@@ -1,5 +1,4 @@
 use std::fmt;
-use std::ops::Sub;
 use std::sync::RwLock;
 
 pub trait ConvertToBytes{
@@ -19,16 +18,16 @@ impl std::error::Error for MaxDepthReachedError {}
 
 #[derive(Debug)]
 struct ConcurrentBSTInternal<K,V>{
-    key: K,
+    key: [u8; 64],
     value: V,
     child_nodes: [ConcurrentBSTMap<K,V>; 2]
 }
 
 impl<K: Copy + ConvertToBytes, V: Copy> ConcurrentBSTInternal<K,V>{
     
-    const fn new(key: K, value: V) -> Self {
+    fn new(key: K, value: V) -> Self {
         Self {
-            key,
+            key: key.convert_to_bytes(),
             value,
             child_nodes: [const { ConcurrentBSTMap::new() }; 2]
         }
@@ -53,11 +52,12 @@ impl<K: Copy + ConvertToBytes, V: Copy> ConcurrentBSTMap<K,V>{
     }
 
     pub fn contains_key(&self, key: K) -> bool{
+        let key_as_bytes = key.convert_to_bytes();
         self.0.read().map(|read_lock| {
             match &*read_lock{
                 None => false,
                 Some(node) => {
-                    if node.key == key {true}
+                    if node.key == key_as_bytes {true}
                     else {node.child_nodes[Self::get_index(key, node.key)].contains_key(key)}
                 }
             }
@@ -334,7 +334,7 @@ impl<K: Copy + ConvertToBytes, V: Copy> ConcurrentBSTMap<K,V>{
         if item_2 > item_1 {item_2 - item_1} else {item_1 - item_2}
     }
     
-    fn get_index(target: K, current: K) -> usize{
+    fn get_index(target: [u8;64], current: [u8;64]) -> usize{
         if target < current {0} else {1}
     }
 
