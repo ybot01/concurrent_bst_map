@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime};
 use rand::distributions::{Distribution, Standard};
 use rand::{random, Rng};
 use tokio::task::JoinHandle;
-use concurrent_bst_map::{ConcurrentBSTMap, Values, ALWAYS_UPDATE, DEFAULT_MAX_DEPTH};
+use concurrent_bst_map::{ConcurrentBSTMap, Constants, ALWAYS_UPDATE};
 
 fn should_update<T: Ord>(value_1: &T, value_2: &T) -> bool{
     value_2 > value_1
@@ -28,7 +28,8 @@ impl Sub for U64Wrapper {
     }
 }
 
-impl Values for U64Wrapper{
+impl Constants for U64Wrapper{
+    const MAX_DEPTH: u32 = 500;
     const MAX: Self = U64Wrapper::from(u64::MAX);
     const ONE: Self = U64Wrapper::from(1);
     const ZERO: Self = U64Wrapper::from(0);
@@ -51,7 +52,7 @@ fn length_test(){
     let expected = 10000;
     let bst = ConcurrentBSTMap::<U64Wrapper, u64>::new();
     get_vec_of_key_values::<(U64Wrapper,u64)>(expected).iter()
-        .for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE, DEFAULT_MAX_DEPTH));
+        .for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE));
     assert_eq!(bst.len(), expected);
 }
 
@@ -60,7 +61,7 @@ fn depth_test(){
     let expected = 10000;
     let bst = ConcurrentBSTMap::<U64Wrapper, u64>::new();
     get_vec_of_key_values::<(U64Wrapper,u64)>(expected).iter()
-        .for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE, DEFAULT_MAX_DEPTH));
+        .for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE));
     println!("{}", bst.depth());
 }
 
@@ -70,7 +71,7 @@ fn remove_test(){
     let expected = 10000;
     let to_insert = get_vec_of_key_values::<(U64Wrapper,u64)>(expected);
     let bst = ConcurrentBSTMap::<U64Wrapper, u64>::new();
-    to_insert.iter().for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE, DEFAULT_MAX_DEPTH));
+    to_insert.iter().for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE));
     to_insert.iter().for_each(|x| bst.remove(x.0));
     assert!(to_insert.iter().all(|x| bst.get(x.0).is_none()));
 }
@@ -79,17 +80,17 @@ fn remove_test(){
 fn should_update_test() {
     let bst = ConcurrentBSTMap::<U64Wrapper, u64>::new();
     let (key, mut value) = (U64Wrapper::from(1000), 0);
-    assert!(bst.insert_or_update(key, value, &should_update, DEFAULT_MAX_DEPTH).is_ok_and(|x| x));
+    assert!(bst.insert_or_update(key, value, &should_update).is_ok_and(|x| x));
     value += 1;
-    assert!(bst.insert_or_update(key, value, &should_update, DEFAULT_MAX_DEPTH).is_ok_and(|x| x));
+    assert!(bst.insert_or_update(key, value, &should_update).is_ok_and(|x| x));
     value -= 1;
-    assert!(!bst.insert_or_update(key, value, &should_update, DEFAULT_MAX_DEPTH).is_ok_and(|x| x));
+    assert!(!bst.insert_or_update(key, value, &should_update).is_ok_and(|x| x));
 }
 
 #[test]
 fn insert_and_get_test() {
     let bst = ConcurrentBSTMap::<U64Wrapper, u64>::new();
-    _ = bst.insert_or_update(U64Wrapper::from(0), 1, &ALWAYS_UPDATE, DEFAULT_MAX_DEPTH);
+    _ = bst.insert_or_update(U64Wrapper::from(0), 1, &ALWAYS_UPDATE);
     assert!(bst.get(U64Wrapper::from(0)).is_some_and(|x| x == 1));
 }
 
@@ -101,7 +102,7 @@ fn bench_insert_or_update_if(){
     let total = 1000000;
     let start_time = SystemTime::now();
     for _ in 0..total{
-        if bst.insert_or_update(key, value, &should_update, DEFAULT_MAX_DEPTH).is_ok_and(|x| x) {true_count += 1};
+        if bst.insert_or_update(key, value, &should_update).is_ok_and(|x| x) {true_count += 1};
         value += 1;
     }
     println!("{}", total as f64 / SystemTime::now().duration_since(start_time).unwrap().as_secs_f64());
@@ -133,7 +134,7 @@ fn bench_multi_thread_insert_or_update_if_and_remove(){
                     USER_LIST.read().map(|read_lock| {
                         for i in start_index..(start_index+TOTAL_PER_THREAD) {
                             let (key, value) = read_lock[i];
-                            if GLOBAL_BST.insert_or_update(key, value, &should_update, DEFAULT_MAX_DEPTH).is_ok_and(|x| x){
+                            if GLOBAL_BST.insert_or_update(key, value, &should_update).is_ok_and(|x| x){
                                 TRUE_COUNT.fetch_add(1, Ordering::Relaxed);
                             }
                         }

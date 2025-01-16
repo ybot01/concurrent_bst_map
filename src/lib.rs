@@ -2,7 +2,8 @@ use std::fmt;
 use std::ops::Sub;
 use std::sync::RwLock;
 
-pub trait Values{
+pub trait Constants {
+    const MAX_DEPTH: u32;
     const MAX: Self;
     const ONE: Self;
     const ZERO: Self;
@@ -26,7 +27,7 @@ struct ConcurrentBSTInternal<K,V>{
     child_nodes: [ConcurrentBSTMap<K,V>; 2]
 }
 
-impl<K: Copy + Ord + Sub<Output = K> + Values, V: Copy> ConcurrentBSTInternal<K,V>{
+impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTInternal<K,V>{
     
     fn new(key: K, value: V) -> Self {
         Self {
@@ -43,12 +44,10 @@ pub const fn ALWAYS_UPDATE<T>(_: &T, _: &T) -> bool {true}
 #[allow(non_snake_case)]
 pub const fn NEVER_UPDATE<T>(_: &T, _: &T) -> bool {false}
 
-pub const DEFAULT_MAX_DEPTH: u32 = 500;
-
 #[derive(Debug)]
 pub struct ConcurrentBSTMap<K,V>(RwLock<Option<Box<ConcurrentBSTInternal<K,V>>>>);
 
-impl<K: Copy + Ord + Sub<Output = K> + Values, V: Copy> ConcurrentBSTMap<K,V>{
+impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>{
     
     pub fn clear(&self){
         *self.0.write().unwrap() = None;
@@ -74,7 +73,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Values, V: Copy> ConcurrentBSTMap<K,V>{
             let (mut key, mut value);
             while (all_key_values.len() > 0) && !error{
                 (key, value) = all_key_values.swap_remove(rand_index_func(all_key_values.len()));
-                if new_bst.insert_or_update(key, value, &NEVER_UPDATE, DEFAULT_MAX_DEPTH).is_err() {error = true}
+                if new_bst.insert_or_update(key, value, &NEVER_UPDATE).is_err() {error = true}
             }
             if !error {return new_bst}
         }
@@ -209,8 +208,12 @@ impl<K: Copy + Ord + Sub<Output = K> + Values, V: Copy> ConcurrentBSTMap<K,V>{
         }).unwrap()
     }
 
-    pub fn insert_or_update(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool, max_depth: u32) -> Result<bool, MaxDepthReachedError>{
-        if max_depth == 0 {return Err(MaxDepthReachedError)}
+    pub fn insert_or_update(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool) -> Result<bool, MaxDepthReachedError>{
+        self.insert_or_update_internal(key, value, should_update, K::MAX_DEPTH)
+    }
+    
+    fn insert_or_update_internal(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool, depth_remaining: u32) -> Result<bool, MaxDepthReachedError>{
+        if depth_remaining == 0 {return Err(MaxDepthReachedError)}
         loop{
             match self.0.read().map(|read_lock| {
                 match &*read_lock{
@@ -219,8 +222,8 @@ impl<K: Copy + Ord + Sub<Output = K> + Values, V: Copy> ConcurrentBSTMap<K,V>{
                         if node.key != key {
                             Some(
                                 //should never be 0
-                                if max_depth < 2 {Err(MaxDepthReachedError)}
-                                else {node.child_nodes[Self::get_index(key, node.key)].insert_or_update(key, value, should_update, max_depth - 1)}
+                                if depth_remaining < 2 {Err(MaxDepthReachedError)}
+                                else {node.child_nodes[Self::get_index(key, node.key)].insert_or_update_internal(key, value, should_update, depth_remaining - 1)}
                             )
                         }
                         else {None}
@@ -375,7 +378,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Values, V: Copy> ConcurrentBSTMap<K,V>{
     }
 }
 
-impl<K: Copy + Ord + Sub<Output = K> + Values, V: Copy> IntoIterator for ConcurrentBSTMap<K, V>{
+impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> IntoIterator for ConcurrentBSTMap<K, V>{
     type Item = (K, V);
 
     type IntoIter = ConcurrentBSTMapIntoIterator<K, V>;
@@ -393,7 +396,7 @@ pub struct ConcurrentBSTMapIntoIterator<K, V> {
     current_key: Option<K>
 }
 
-impl<K: Copy + Ord + Sub<Output = K> + Values, V: Copy> Iterator for ConcurrentBSTMapIntoIterator<K, V>{
+impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> Iterator for ConcurrentBSTMapIntoIterator<K, V>{
     type Item = (K,V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -413,7 +416,7 @@ pub struct ConcurrentBSTMapIterator<'a, K, V> {
     current_key: Option<K>
 }
 
-impl<'a, K: Copy + Ord + Sub<Output = K> + Values, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, K, V>{
+impl<'a, K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, K, V>{
     type Item = (K,V);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -431,7 +434,7 @@ impl<'a, K: Copy + Ord + Sub<Output = K> + Values, V: Copy> Iterator for Concurr
 #[derive(Debug)]
 pub struct ConcurrentBSTSet<K>(ConcurrentBSTMap<K, ()>);
 
-impl<K: Copy + Ord + Sub<Output = K> + Values> ConcurrentBSTSet<K>{
+impl<K: Copy + Ord + Sub<Output = K> + Constants> ConcurrentBSTSet<K>{
 
     pub fn clear(&self){
         self.0.clear();
@@ -458,7 +461,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Values> ConcurrentBSTSet<K>{
     }
 
     pub fn insert(&self, key: K) -> Result<(), MaxDepthReachedError>{
-        self.0.insert_or_update(key, (), &ALWAYS_UPDATE, DEFAULT_MAX_DEPTH).map(|_| ())
+        self.0.insert_or_update(key, (), &ALWAYS_UPDATE).map(|_| ())
     }
 
     pub fn is_empty(&self) -> bool{
