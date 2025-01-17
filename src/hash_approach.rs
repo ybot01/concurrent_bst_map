@@ -1,8 +1,7 @@
-use std::{hash::{DefaultHasher, Hash, Hasher}, sync::{atomic::AtomicUsize, Mutex, RwLock}};
+use std::{hash::{DefaultHasher, Hash, Hasher}, sync::{atomic::AtomicUsize, LazyLock, Mutex, RwLock}};
 
 pub struct ConcurrentBSTMap<K, V>{
-    init: RwLock<bool>,
-    inner: RwLock<ConcurrentBSTMapInternal<K, V>>
+    inner: LazyLock<RwLock<ConcurrentBSTMapInternal<K, V>>>
 }
 
 struct ConcurrentBSTMapInternal<K, V>{
@@ -13,11 +12,15 @@ struct ConcurrentBSTMapInternal<K, V>{
 
 impl<K, V> ConcurrentBSTMapInternal<K, V>{
 
-    const fn new() -> Self{
+    fn new() -> Self{
         Self{
             root_node: None,
             no_elements: AtomicUsize::new(0),
-            list: Vec::new()
+            list: {
+                let mut new_vec = Vec::new();
+                for _ in 0..1024 {new_vec.push(Mutex::new(Vec::new()))}
+                new_vec
+            }
         }
     }
 }
@@ -38,22 +41,8 @@ impl<K: Copy + Hash + Ord, V: Copy> ConcurrentBSTMap<K, V>{
 
     pub const fn new() -> Self{
         Self { 
-            init: RwLock::new(false),
-            inner: RwLock::new(ConcurrentBSTMapInternal::new())
+            inner: LazyLock::new(|| RwLock::new(ConcurrentBSTMapInternal::new())) 
         }
-    }
-
-    fn init_list(&self){
-        self.init.write().map(|mut init_write_lock| {
-            if !*init_write_lock {
-                self.inner.write().map(| mut main_write_lock| {
-                    let mut new_vec = Vec::new();
-                    for _ in 0..1024 {new_vec.push(Mutex::new(Vec::new()))}
-                    main_write_lock.list = new_vec;
-                }).unwrap();
-                *init_write_lock = true;
-            }
-        }).unwrap()
     }
 
     fn get_child_index(target: K, current: K) -> usize{
@@ -61,7 +50,6 @@ impl<K: Copy + Hash + Ord, V: Copy> ConcurrentBSTMap<K, V>{
     }
 
     pub fn get(&self, key: K) -> Option<V>{
-        if !*self.init.read().unwrap() {self.init_list()}
         self.inner.read().map(|read_lock| {
             let list_length = read_lock.list.len();
             let mut current_key = match read_lock.root_node{
