@@ -1,3 +1,5 @@
+mod hash_approach;
+
 use std::fmt;
 use std::ops::Sub;
 use std::sync::RwLock;
