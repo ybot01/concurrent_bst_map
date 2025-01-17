@@ -5,7 +5,7 @@ use std::time::{Duration, SystemTime};
 use rand::distributions::{Distribution, Standard};
 use rand::{random, Rng};
 use tokio::task::JoinHandle;
-use concurrent_bst_map::{ConcurrentBSTMap, Constants, ALWAYS_UPDATE};
+use concurrent_bst_map::{ConcurrentBSTMap, Constants, ALWAYS_UPDATE, NEVER_UPDATE};
 
 fn should_update<T: Ord>(value_1: &T, value_2: &T) -> bool{
     value_2 > value_1
@@ -29,7 +29,7 @@ impl Sub for U64Wrapper {
 }
 
 impl Constants for U64Wrapper{
-    const MAX_DEPTH: u32 = 500;
+    const MAX_DEPTH: u32 = 50000;
     const MAX: Self = U64Wrapper::from(u64::MAX);
     const ONE: Self = U64Wrapper::from(1);
     const ZERO: Self = U64Wrapper::from(0);
@@ -45,6 +45,17 @@ fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where Standard: Distributio
     let mut to_return = Vec::<T>::new();
     for _ in 0..length {to_return.push(random())}
     to_return
+}
+
+#[test]
+fn recursion_test(){
+    let mut key = 0;
+    let bst = ConcurrentBSTMap::<U64Wrapper, u64>::new();
+    for i in 0..50000{
+        println!("{}", i);
+        _ = bst.insert_or_update(U64Wrapper::from(key), 0, &NEVER_UPDATE);
+        key += 1;
+    }
 }
 
 #[test]
