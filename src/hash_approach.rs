@@ -1,4 +1,6 @@
-use std::{hash::{DefaultHasher, Hash, Hasher}, sync::{atomic::AtomicUsize, LazyLock, Mutex, RwLock}};
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::sync::atomic::AtomicUsize;
+use std::sync::{LazyLock, Mutex, RwLock};
 
 pub struct ConcurrentBSTMap<K, V>{
     inner: LazyLock<RwLock<ConcurrentBSTMapInternal<K, V>>>
@@ -49,7 +51,7 @@ impl<K: Copy + Hash + Ord, V: Copy> ConcurrentBSTMap<K, V>{
         if target < current {0} else {1}
     }
 
-    pub fn get(&self, key: K) -> Option<V>{
+    /*pub fn get(&self, key: K) -> Option<V>{
         self.inner.read().map(|read_lock| {
             let list_length = read_lock.list.len();
             let mut current_key = match read_lock.root_node{
@@ -77,6 +79,13 @@ impl<K: Copy + Hash + Ord, V: Copy> ConcurrentBSTMap<K, V>{
                     }
                 }).unwrap();
             }
+        }).unwrap()
+    }*/
+
+    pub fn get(&self, key: K) -> Option<V>{
+        self.inner.read().map(|read_lock| {
+            read_lock.list[get_index(key, read_lock.list.len())].lock().unwrap().iter()
+                .find(|x| x.key == key).map(|x| x.value)
         }).unwrap()
     }
 }
