@@ -14,8 +14,8 @@ impl<const N: usize, V> ConcurrentMapInternal<N, V>{
 
 impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
 
-    fn get_index(key: [u8; N], depth: usize) -> usize{
-        ((key[depth / 8] >> (depth % 8)) & 1) as usize
+    fn go_left(key: [u8; N], depth: usize) -> bool{
+        ((key[depth / 8] >> (depth % 8)) & 1) == 0
     }
     
     pub const fn new() -> Self{
@@ -23,6 +23,11 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
 
     fn new_filled_list(item_1: ([u8; N], V), item_2: ([u8; N], V), depth: usize) -> ConcurrentMapInternal<N, V>{
+        
+        match (Self::get_index(item_1.0, depth), Self::get_index(item_2.0, depth)){
+
+        }
+        
         ConcurrentMapInternal::List(from_fn(|x| {
             Box::new(
                 Self(
