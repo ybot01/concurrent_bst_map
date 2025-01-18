@@ -7,6 +7,11 @@ enum ConcurrentMapInternal<const N: usize, V>{
     List(ConcurrentMap<N, V>)
 }
 
+impl<const N: usize, V> ConcurrentMapInternal<N, V>{
+    
+    const EMPTY_ITEM: Self = Self::Item(None);
+}
+
 impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
 
     fn get_index(key: [u8; N], depth: usize) -> usize{
@@ -14,7 +19,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
     
     pub fn new() -> Self{
-        Self(from_fn(|_| RwLock::new(Box::new(ConcurrentMapInternal::Item(None)))))
+        Self(from_fn(|_| RwLock::new(Box::new(ConcurrentMapInternal::EMPTY_ITEM))))
     }
 
     fn new_filled_list(item_1: ([u8; N], V), item_2: ([u8; N], V), depth: usize) -> ConcurrentMapInternal<N, V>{
@@ -31,7 +36,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
 
     pub fn clear(&self){
         for i in 0..self.0.len(){
-            *self.0[i].write().unwrap() = Box::new(ConcurrentMapInternal::Item(None))
+            *self.0[i].write().unwrap() = Box::new(ConcurrentMapInternal::EMPTY_ITEM)
         }
     }
 
@@ -49,7 +54,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
 
     pub fn insert_or_update(&self, key: [u8; N], value: V) -> bool{
-    self.insert_or_update_if(key, value, &|_,_| true)
+        self.insert_or_update_if(key, value, &|_,_| true)
     }
     
     pub fn insert_or_update_if(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool) -> bool{
