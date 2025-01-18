@@ -1,5 +1,5 @@
-mod hash_approach;
-mod recursive_approach;
+mod non_recursive;
+mod recursive;
 
 #[allow(non_snake_case)]
 pub const fn ALWAYS_UPDATE<T>(_: &T, _: &T) -> bool {true}
