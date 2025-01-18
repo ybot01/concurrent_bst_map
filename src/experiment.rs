@@ -1,18 +1,13 @@
 use std::{array::from_fn, sync::RwLock};
 
-pub trait Subdivision{
+pub struct ConcurrentMap<const N: usize, V>([RwLock<Box<ConcurrentMapInternal<N, V>>>; 16]);
 
-    fn get_subdivision(&self, depth: usize) -> usize;
+enum ConcurrentMapInternal<const N: usize, V>{
+    Item(Option<([u8; N], V)>),
+    List(ConcurrentMap<N, V>)
 }
 
-pub struct ConcurrentMap<K, V>([RwLock<Box<ConcurrentMapInternal<K, V>>>; 256]);
-
-enum ConcurrentMapInternal<K, V>{
-    Item(Option<(K, V)>),
-    List(ConcurrentMap<K, V>)
-}
-
-impl<K: Copy + Ord + Subdivision, V: Copy> ConcurrentMap<K, V>{
+impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
 
     pub fn new() -> Self{
         Self(from_fn(|_| RwLock::new(Box::new(ConcurrentMapInternal::Item(None)))))
@@ -24,12 +19,13 @@ impl<K: Copy + Ord + Subdivision, V: Copy> ConcurrentMap<K, V>{
         }
     }
 
-    pub fn get(&self, key: K) -> Option<V>{
+    pub fn get(&self, key: [u8; N]) -> Option<V>{
         self.get_internal(key, 0)
     }
     
-    fn get_internal(&self, key: K, depth: usize) -> Option<V>{
-        self.0[key.get_subdivision(depth)].read().map(|read_lock| {
+    fn get_internal(&self, key: [u8; N], depth: usize) -> Option<V>{
+        let index = if (depth % 2) == 0 {(key[depth/2] & 0xF0) >> 4} else {key[depth/2] & 0x0F};
+        self.0[index as usize].read().map(|read_lock| {
             match read_lock.as_ref(){
                 ConcurrentMapInternal::Item(item) => {
                     match item{
