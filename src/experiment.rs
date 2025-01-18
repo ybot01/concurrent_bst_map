@@ -1,4 +1,4 @@
-use std::{array::from_fn, sync::RwLock};
+use std::sync::RwLock;
 
 pub struct ConcurrentMap<const N: usize, V>(RwLock<ConcurrentMapInternal<N, V>>);
 
@@ -7,7 +7,7 @@ enum ConcurrentMapInternal<const N: usize, V>{
     List([Box<ConcurrentMap<N, V>>; 2])
 }
 
-impl<const N: usize, V> ConcurrentMapInternal<N, V>{
+impl<const N: usize, V: Copy> ConcurrentMapInternal<N, V>{
     
     const EMPTY_ITEM: Self = Self::Item(None);
 }
@@ -18,27 +18,30 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         ((key[depth / 8] >> (depth % 8)) & 1) == 0
     }
     
+    fn get_index(key: [u8; N], depth: usize) -> usize{
+        ((key[depth / 8] >> (depth % 8)) & 1) as usize
+    }
+    
     pub const fn new() -> Self{
         Self(RwLock::new(ConcurrentMapInternal::EMPTY_ITEM))
     }
+    
+    const fn new_with(key_value: ([u8; N], V)) -> Self{
+        Self(RwLock::new(ConcurrentMapInternal::Item(Some(key_value))))
+    }
 
     fn new_filled_list(item_1: ([u8; N], V), item_2: ([u8; N], V), depth: usize) -> ConcurrentMapInternal<N, V>{
+        let item_1_entry = Box::new(Self::new_with(item_1));
+        let item_2_entry = Box::new(Self::new_with(item_2));
         
-        match (Self::get_index(item_1.0, depth), Self::get_index(item_2.0, depth)){
-
-        }
-        
-        ConcurrentMapInternal::List(from_fn(|x| {
-            Box::new(
-                Self(
-                    RwLock::new(ConcurrentMapInternal::Item(
-                        if Self::get_index(item_1.0, depth) == x {Some(item_1)}
-                        else if Self::get_index(item_2.0, depth) == x {Some(item_2)}
-                        else {None}
-                    ))
-                )
-            )
-        }))
+        ConcurrentMapInternal::List(
+            match (Self::go_left(item_1.0, depth), Self::go_left(item_2.0, depth)){
+                (false, false) => [Box::new(Self::new()), item_1_entry],
+                (false, true) => [item_2_entry, item_1_entry],
+                (true, false) => [item_1_entry, item_2_entry],
+                (true, true) => [item_1_entry, Box::new(Self::new())]
+            }
+        )
     }
 
     pub fn clear(&self){
