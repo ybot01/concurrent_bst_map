@@ -70,6 +70,53 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
 
     fn insert_or_update_if_internal(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool, depth: usize) -> bool{
+        loop{
+            match self.0.read().map(|read_lock| {
+                match &*read_lock{
+                    ConcurrentMapInternal::Item(_) => None, //change to write lock
+                    ConcurrentMapInternal::List(list) => Some(list[Self::get_index(key, depth)].insert_or_update_if_internal(key, value, should_update, depth + 1))
+                }
+            }).unwrap(){
+                None => (),
+                Some(x) => return x
+            }
+            match self.0.write().map(|mut write_lock| {
+                match &mut *write_lock {
+                    ConcurrentMapInternal::Item(item) => {
+                        match item{
+                            None => {
+                                //insert
+                                *item = Some((key, value));
+                                Some(true)
+                            }
+                            Some(existing) => {
+                                if existing.0 == key{
+                                    //update
+                                    Some(
+                                        if should_update(&existing.1, &value){
+                                            existing.1 = value;
+                                            true
+                                        }
+                                        else {false}
+                                    )
+                                }
+                                else{
+                                    //tricky bit
+                                    
+                                    
+                                    
+                                    Some(true)
+                                }
+                            }
+                        }
+                    }
+                    ConcurrentMapInternal::List(_) => None //change back to read lock
+                }
+            }).unwrap(){
+                None => (),
+                Some(x) => return x
+            }
+        }
         
     }
 }
