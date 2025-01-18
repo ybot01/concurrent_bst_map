@@ -31,10 +31,16 @@ impl<K, V> ConcurrentBSTMapInternal<K, V>{
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
+enum EntryLock{
+    Read(usize),
+    AwaitingWrite(usize)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Copy)]
 struct ConcurrentBSTMapEntry<K, V>{
     key: K,
     value: V,
-    child_keys: [Option<(K, usize, bool)>; 2]
+    child_keys: [Option<(K, EntryLock)>; 2]
 }
 
 impl<K: Copy, V> ConcurrentBSTMapEntry<K, V>{
@@ -129,8 +135,9 @@ impl<K: Copy + Ord + Hash, V: Copy> ConcurrentBSTMap<K, V>{
                                     ))
                                 }
                                 else{
-                                    match *mutex_lock[index].child_keys[Self::get_child_index(key, current_key)].get_or_insert((key, )){
-                                        (next_key, false) => current_key = next_key,
+                                    match *mutex_lock[index].child_keys[Self::get_child_index(key, current_key)].get_or_insert((key, EntryLock::Read(
+                                    ))){
+                                        (next_key, ) => current_key = next_key,
                                         (_, true) => ()
                                     }
                                     None

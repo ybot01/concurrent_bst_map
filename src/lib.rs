@@ -1,5 +1,6 @@
 mod non_recursive;
 mod recursive;
+mod experiment;
 
 #[allow(non_snake_case)]
 pub const fn ALWAYS_UPDATE<T>(_: &T, _: &T) -> bool {true}
