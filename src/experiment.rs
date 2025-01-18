@@ -1,4 +1,4 @@
-use std::sync::{atomic::AtomicUsize, LazyLock, Mutex, RwLock};
+use std::sync::{atomic::{AtomicUsize, Ordering}, LazyLock, Mutex, RwLock};
 
 pub struct ConcurrentMap<K, V>(LazyLock<RwLock<ConcurrentMapInner<K, V>>>);
 
@@ -56,6 +56,9 @@ impl<K: Copy + Resize + Ord, V: Copy> ConcurrentMap<K, V>{
         self.insert_or_update_if(key, value, |_,_| true)
     }
 
+    //make so if lots of keys clusteted together then subdivide further
+    //subdivisions adapt to clusters and empty parts alike
+
     pub fn insert_or_update_if(&self, key: K, value: V, should_update: impl Fn(&V, &V) -> bool) -> bool{
         self.0.read().map(|read_lock| {
             read_lock.list[key.resize(read_lock.list.len())].lock().map(|mut mutex_lock| {
@@ -71,6 +74,7 @@ impl<K: Copy + Resize + Ord, V: Copy> ConcurrentMap<K, V>{
                     None => {
                         //insert
                         mutex_lock.push(Entry::new(key, value));
+                        read_lock.no_entries.fetch_add(1, Ordering::Relaxed);
                         true
                     }
                 }
