@@ -1,6 +1,6 @@
 use std::{array::from_fn, sync::RwLock};
 
-pub struct ConcurrentMap<const N: usize, V>([RwLock<Box<ConcurrentMapInternal<N, V>>>; 16]);
+pub struct ConcurrentMap<const N: usize, V>([RwLock<Box<ConcurrentMapInternal<N, V>>>; 2]);
 
 enum ConcurrentMapInternal<const N: usize, V>{
     Item(Option<([u8; N], V)>),
@@ -24,7 +24,10 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
     
     fn get_internal(&self, key: [u8; N], depth: usize) -> Option<V>{
-        let index = if (depth % 2) == 0 {(key[depth/2] & 0xF0) >> 4} else {key[depth/2] & 0x0F};
+        let modulus = depth % 8;
+        let byte = depth / 8;
+        
+        
         self.0[index as usize].read().map(|read_lock| {
             match read_lock.as_ref(){
                 ConcurrentMapInternal::Item(item) => {
