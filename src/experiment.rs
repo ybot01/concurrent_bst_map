@@ -1,5 +1,4 @@
 use std::{array::from_fn, sync::RwLock};
-use std::ops::Deref;
 
 pub struct ConcurrentMap<const N: usize, V>(RwLock<ConcurrentMapInternal<N, V>>);
 
@@ -49,7 +48,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         self.0.read().map(|read_lock| {
             match &*read_lock{
                 ConcurrentMapInternal::Item(item) => return item.filter(|x| x.0 == key).map(|x| x.1),
-                ConcurrentMapInternal::List(list) => list[Self::get_index(key, depth + 1)].get_internal(key, depth + 1)
+                ConcurrentMapInternal::List(list) => list[Self::get_index(key, depth)].get_internal(key, depth + 1)
             }
         }).unwrap()
     }
