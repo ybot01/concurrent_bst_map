@@ -1,85 +1,44 @@
-use std::sync::{atomic::{AtomicUsize, Ordering}, LazyLock, Mutex, RwLock};
+use std::{array::from_fn, sync::RwLock};
 
-pub struct ConcurrentMap<K, V>(LazyLock<RwLock<ConcurrentMapInner<K, V>>>);
+pub trait Subdivision{
 
-struct ConcurrentMapInner<K, V>{
-    no_entries: AtomicUsize,
-    list: Vec<Mutex<Vec<Entry<K, V>>>>
+    fn get_subdivision(&self, depth: usize) -> usize;
 }
 
-impl<K, V> ConcurrentMapInner<K, V>{
+pub struct ConcurrentMap<K, V>([RwLock<Box<ConcurrentMapInternal<K, V>>>; 256]);
 
-    fn new() -> Self{
-        Self { 
-            no_entries: AtomicUsize::new(0), 
-            list: {
-                let mut new_vec = Vec::new();
-                for _ in 0..1024 {new_vec.push(Mutex::new(Vec::new()))}
-                new_vec
-            }
-        }
+enum ConcurrentMapInternal<K, V>{
+    Item(Option<(K, V)>),
+    List(ConcurrentMap<K, V>)
+}
+
+impl<K: Copy + Ord + Subdivision, V: Copy> ConcurrentMap<K, V>{
+
+    pub fn new() -> Self{
+        Self(from_fn(|_| RwLock::new(Box::new(ConcurrentMapInternal::Item(None)))))
     }
-}
 
-struct Entry<K, V>{
-    key: K,
-    value: V
-}
-
-impl<K, V> Entry<K, V>{
-    fn new(key: K, value: V) -> Self{
-        Self{
-            key,
-            value
+    pub fn clear(&self){
+        for i in 0..self.0.len(){
+            *self.0[i].write().unwrap() = Box::new(ConcurrentMapInternal::Item(None))
         }
-    }
-}
-
-pub trait Resize{
-    fn resize(&self, length: usize) -> usize;
-}
-
-impl<K: Copy + Resize + Ord, V: Copy> ConcurrentMap<K, V>{
-
-    pub const fn new() -> Self{
-        Self(LazyLock::new(|| RwLock::new(ConcurrentMapInner::new())))
     }
 
     pub fn get(&self, key: K) -> Option<V>{
-        self.0.read().map(|read_lock| {
-            read_lock.list[key.resize(read_lock.list.len())].lock().unwrap()
-            .iter().find(|x| x.key == key).map(|x| x.value)
-        }).unwrap()
+        self.get_internal(key, 0)
     }
-
-    pub fn insert_or_update(&self, key: K, value: V) -> bool{
-        self.insert_or_update_if(key, value, |_,_| true)
-    }
-
-    //make so if lots of keys clusteted together then subdivide further
-    //subdivisions adapt to clusters and empty parts alike
-
-    pub fn insert_or_update_if(&self, key: K, value: V, should_update: impl Fn(&V, &V) -> bool) -> bool{
-        self.0.read().map(|read_lock| {
-            read_lock.list[key.resize(read_lock.list.len())].lock().map(|mut mutex_lock| {
-                match mutex_lock.iter().position(|x| x.key == key){
-                    Some(index) => {
-                        //update
-                        if should_update(&mutex_lock[index].value, &value){
-                            mutex_lock[index].value = value;
-                            true
-                        }
-                        else {false}
-                    }
-                    None => {
-                        //insert
-                        mutex_lock.push(Entry::new(key, value));
-                        read_lock.no_entries.fetch_add(1, Ordering::Relaxed);
-                        true
+    
+    fn get_internal(&self, key: K, depth: usize) -> Option<V>{
+        self.0[key.get_subdivision(depth)].read().map(|read_lock| {
+            match read_lock.as_ref(){
+                ConcurrentMapInternal::Item(item) => {
+                    match item{
+                        None => None,
+                        Some(x) => if x.0 == key {Some(x.1)} else {None}
                     }
                 }
-            }).unwrap()
+                ConcurrentMapInternal::List(list) => list.get_internal(key, depth + 1)
+            }
         }).unwrap()
     }
-
 }
