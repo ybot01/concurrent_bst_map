@@ -3,39 +3,38 @@ use std::sync::RwLock;
 pub struct ConcurrentMap<const N: usize, V>(RwLock<ConcurrentMapInternal<N, V>>);
 
 enum ConcurrentMapInternal<const N: usize, V>{
-    Item(Option<([u8; N], V)>),
-    List([Box<ConcurrentMap<N, V>>; 2])
+    Item([u8; N], V),
+    List(Vec<(u8, Box<ConcurrentMap<N, V>>)>)
 }
 
 impl<const N: usize, V: Copy> ConcurrentMapInternal<N, V>{
     
-    const EMPTY_ITEM: Self = Self::Item(None);
-
-    fn get_empty_list() -> Self{
-        Self::List([Box::new(ConcurrentMap::new()), Box::new(ConcurrentMap::new())])
+    const fn new_empty_list() -> Self{
+        Self::List(Vec::new())
     }
 }
 
 impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
 
-    fn go_left(key: [u8; N], depth: usize) -> bool{
-        ((key[depth / 8] >> (depth % 8)) & 1) == 0
-    }
-
-    fn get_index(key: [u8; N], depth: usize) -> usize{
-        ((key[depth / 8] >> (depth % 8)) & 1) as usize
+    const fn get_index(key: [u8; N], depth: usize) -> u8{
+        match depth % 4{
+            0 => (key[depth/4] & 0b11000000) >> 6,
+            1 => (key[depth/4] & 0b00110000) >> 4,
+            2 => (key[depth/4] & 0b00001100) >> 2,
+            _ => key[depth/4] & 0b00000011
+        }
     }
     
     pub const fn new() -> Self{
-        Self(RwLock::new(ConcurrentMapInternal::EMPTY_ITEM))
+        Self(RwLock::new(ConcurrentMapInternal::new_empty_list()))
     }
-
-    const fn new_with(key_value: ([u8; N], V)) -> Self{
-        Self(RwLock::new(ConcurrentMapInternal::Item(Some(key_value))))
+    
+    const fn new_item(key: [u8;N], value: V) -> Self{
+        Self(RwLock::new(ConcurrentMapInternal::Item(key, value)))
     }
 
     pub fn clear(&self){
-        *self.0.write().unwrap() = ConcurrentMapInternal::EMPTY_ITEM
+        *self.0.write().unwrap() = ConcurrentMapInternal::new_empty_list();
     }
 
     pub fn get(&self, key: [u8; N]) -> Option<V>{
@@ -45,8 +44,12 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     fn get_internal(&self, key: [u8; N], depth: usize) -> Option<V>{
         self.0.read().map(|read_lock| {
             match &*read_lock{
-                ConcurrentMapInternal::Item(item) => return item.filter(|x| x.0 == key).map(|x| x.1),
-                ConcurrentMapInternal::List(list) => list[Self::get_index(key, depth)].get_internal(key, depth + 1)
+                ConcurrentMapInternal::Item(item_key, item_value) => if *item_key == key {Some(*item_value)} else {None}
+                ConcurrentMapInternal::List(list) => {
+                    let index = Self::get_index(key, depth);
+                    list.iter().find(|x| x.0 == index)
+                        .and_then(|x| x.1.get_internal(key, depth + 1))
+                }
             }
         }).unwrap()
     }
@@ -60,12 +63,15 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
 
     fn insert_or_update_if_internal(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool, depth: usize) -> bool{
+        let index = Self::get_index(key, depth);
         loop{
             match self.0.read().map(|read_lock| {
-                //change to only check if current item is less than or greater so dont have to do bit shifting
                 match &*read_lock{
-                    ConcurrentMapInternal::Item(_) => None, //change to write lock
-                    ConcurrentMapInternal::List(list) => Some(list[Self::get_index(key, depth)].insert_or_update_if_internal(key, value, should_update, depth + 1))
+                    ConcurrentMapInternal::Item(_,_) => None, //change to write lock
+                    ConcurrentMapInternal::List(list) => {
+                        list.iter().find(|x| x.0 == index)
+                            .map(|x| x.1.insert_or_update_if_internal(key, value, should_update, depth + 1))
+                    }
                 }
             }).unwrap(){
                 None => (),
@@ -73,33 +79,30 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
             }
             match self.0.write().map(|mut write_lock| {
                 match &mut *write_lock {
-                    ConcurrentMapInternal::Item(item) => {
-                        match item{
-                            None => {
-                                //insert
-                                *item = Some((key, value));
-                                Some(true)
-                            }
-                            Some(existing) => {
-                                if existing.0 == key{
-                                    //update
-                                    Some(
-                                        if should_update(&existing.1, &value){
-                                            existing.1 = value;
-                                            true
-                                        }
-                                        else {false}
-                                    )
+                    ConcurrentMapInternal::Item(existing_key, existing_value) => {
+                        if *existing_key == key{
+                            //update
+                            Some(
+                                if should_update(existing_value, &value){
+                                    *existing_value = value;
+                                    true
                                 }
-                                else{
-                                    //insert and restructure
-                                    *write_lock = Self::deepen_tree(*existing, (key, value), depth);
-                                    Some(true)
-                                }
-                            }
+                                else {false}
+                            )
+                        }
+                        else{
+                            //insert and restructure
+                            *write_lock = Self::deepen_tree((*existing_key, *existing_value), (key, value), depth);
+                            Some(true)
                         }
                     }
-                    ConcurrentMapInternal::List(_) => None //change back to read lock
+                    ConcurrentMapInternal::List(list) => {
+                        if list.iter().any(|x| x.0 == index) {None}
+                        else {
+                            list.push((index, Box::new(Self::new_item(key, value))));
+                            Some(true)
+                        }
+                    }
                 }
             }).unwrap(){
                 None => (),
@@ -109,27 +112,53 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
 
     fn deepen_tree(item_1: ([u8; N], V), item_2: ([u8; N], V), depth: usize) -> ConcurrentMapInternal<N, V> {
-        match (Self::go_left(item_1.0, depth), Self::go_left(item_2.0, depth)) {
-            (true, false) => ConcurrentMapInternal::List([Box::new(Self::new_with(item_1)), Box::new(Self::new_with(item_2))]),
-            (false, true) => ConcurrentMapInternal::List([Box::new(Self::new_with(item_2)), Box::new(Self::new_with(item_1))]),
-            (true, true) => ConcurrentMapInternal::List([Box::new(ConcurrentMap(RwLock::new(Self::deepen_tree(item_1, item_2, depth + 1)))), Box::new(ConcurrentMap::new())]),
-            (false, false) => ConcurrentMapInternal::List([Box::new(ConcurrentMap::new()), Box::new(ConcurrentMap(RwLock::new(Self::deepen_tree(item_1, item_2, depth + 1))))])
+        let item_1_index = Self::get_index(item_1.0, depth);
+        let item_2_index = Self::get_index(item_2.0, depth);
+        let mut new_vec = Vec::new();
+        if item_1_index == item_2_index {
+            new_vec.push((item_1_index, Box::new(ConcurrentMap(RwLock::new(Self::deepen_tree(item_1, item_2, depth + 1))))));
         }
+        else{
+            new_vec.push((item_1_index, Box::new(Self::new_item(item_1.0, item_1.1))));
+            new_vec.push((item_2_index, Box::new(Self::new_item(item_2.0, item_2.1))));
+        }
+        ConcurrentMapInternal::List(new_vec)
     }
 
     pub fn remove(&self, key: [u8; N], value: V){
         self.remove_if(key, value, &|_,_| true)
     }
 
-    pub fn remove_if_internal(&self, key: [u8; N], value: V, should_remove: &impl Fn(&[u8; N], &V) -> bool, depth: usize){
-        match self.0.read().map(|read_lock| {
-            match &*read_lock{
-                ConcurrentMapInternal::Item(_) => None, //change to write lock
-                ConcurrentMapInternal::List(list) => Some(list[Self::get_index(key, depth)].remove_if_internal(key, value, should_remove, depth + 1))
-            }
-        }).unwrap(){
-            None => (),
-            Some(x) => return x
+    pub fn remove_if(&self, key: [u8; N], value: V, should_remove: &impl Fn(&[u8; N], &V) -> bool){
+        self.remove_if_internal(key, value, should_remove, 0)
+    }
+
+    fn remove_if_internal(&self, key: [u8; N], value: V, should_remove: &impl Fn(&[u8; N], &V) -> bool, depth: usize){
+        let index = Self::get_index(key, depth);
+        loop{
+            if self.0.read().map(|read_lock| {
+                match &*read_lock{
+                    ConcurrentMapInternal::Item(_,_) => false, //change to write lock
+                    ConcurrentMapInternal::List(list) => {
+                        list.iter().find(|x| x.0 == index)
+                            .map(|x| x.1.remove_if_internal(key, value, should_remove, depth + 1));
+                        true
+                    }
+                }
+            }).unwrap() {return}
+            if self.0.write().map(|mut write_lock| {
+                match &mut *write_lock{
+                    ConcurrentMapInternal::Item(existing_key,existing_value) => {
+                        
+                    }
+                    ConcurrentMapInternal::List(list) => {
+                        list.iter().find(|x| x.0 == index)
+                            .map(|x| x.1.remove_if_internal(key, value, should_remove, depth + 1));
+                        true
+                    }
+                }
+            }).unwrap() {return}
         }
+        
     }
 }
