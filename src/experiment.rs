@@ -130,35 +130,38 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
 
     pub fn remove_if(&self, key: [u8; N], value: V, should_remove: &impl Fn(&[u8; N], &V) -> bool){
-        self.remove_if_internal(key, value, should_remove, 0)
+        self.remove_if_internal(key, value, should_remove, 0);
     }
 
-    fn remove_if_internal(&self, key: [u8; N], value: V, should_remove: &impl Fn(&[u8; N], &V) -> bool, depth: usize){
+    fn remove_if_internal(&self, key: [u8; N], value: V, should_remove: &impl Fn(&[u8; N], &V) -> bool, depth: usize) -> bool{
         let index = Self::get_index(key, depth);
-        loop{
+        loop {
             if self.0.read().map(|read_lock| {
-                match &*read_lock{
-                    ConcurrentMapInternal::Item(_,_) => false, //change to write lock
-                    ConcurrentMapInternal::List(list) => {
-                        list.iter().find(|x| x.0 == index)
-                            .map(|x| x.1.remove_if_internal(key, value, should_remove, depth + 1));
-                        true
-                    }
-                }
-            }).unwrap() {return}
-            if self.0.write().map(|mut write_lock| {
-                match &mut *write_lock{
-                    ConcurrentMapInternal::Item(existing_key,existing_value) => {
-                        
+                match &*read_lock {
+                    ConcurrentMapInternal::Item(existing_key, existing_value) => {
+                        Some((*existing_key == key) && should_remove(existing_key, existing_value))
                     }
                     ConcurrentMapInternal::List(list) => {
                         list.iter().find(|x| x.0 == index)
-                            .map(|x| x.1.remove_if_internal(key, value, should_remove, depth + 1));
-                        true
+                            .map(|x| x.1.remove_if_internal(key, value, should_remove, depth + 1))
                     }
                 }
-            }).unwrap() {return}
+            }).unwrap().is_some_and(|x| x){
+                self.0.write().map(|mut write_lock| {
+                    match &mut *write_lock {
+                        ConcurrentMapInternal::Item(_,_) => true,
+                        ConcurrentMapInternal::List(list) => {
+                            match list.iter().position(|x| x.0 == index){
+                                Some(x) => {
+                                    if list[x].1.0.read().unwrap().
+                                }
+                                None => 
+                            }
+                            
+                        }
+                    }
+                }).unwrap();
+            }
         }
-        
     }
 }
