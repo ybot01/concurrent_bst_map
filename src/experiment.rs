@@ -10,6 +10,10 @@ enum ConcurrentMapInternal<const N: usize, V>{
 impl<const N: usize, V: Copy> ConcurrentMapInternal<N, V>{
     
     const EMPTY_ITEM: Self = Self::Item(None);
+    
+    fn get_empty_list() -> Self{
+        Self::List([Box::new(ConcurrentMap::new()), Box::new(ConcurrentMap::new())])
+    }
 }
 
 impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
@@ -28,20 +32,6 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     
     const fn new_with(key_value: ([u8; N], V)) -> Self{
         Self(RwLock::new(ConcurrentMapInternal::Item(Some(key_value))))
-    }
-
-    fn new_filled_list(item_1: ([u8; N], V), item_2: ([u8; N], V), depth: usize) -> ConcurrentMapInternal<N, V>{
-        let item_1_entry = Box::new(Self::new_with(item_1));
-        let item_2_entry = Box::new(Self::new_with(item_2));
-        
-        ConcurrentMapInternal::List(
-            match (Self::go_left(item_1.0, depth), Self::go_left(item_2.0, depth)){
-                (false, false) => [Box::new(Self::new()), item_1_entry],
-                (false, true) => [item_2_entry, item_1_entry],
-                (true, false) => [item_1_entry, item_2_entry],
-                (true, true) => [item_1_entry, Box::new(Self::new())]
-            }
-        )
     }
 
     pub fn clear(&self){
@@ -101,10 +91,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                                     )
                                 }
                                 else{
-                                    //tricky bit
-                                    
-                                    
-                                    
+                                    *write_lock = Self::deepen_tree(*existing, (key, value), depth);
                                     Some(true)
                                 }
                             }
@@ -117,6 +104,14 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                 Some(x) => return x
             }
         }
-        
+    }
+    
+    fn deepen_tree(item_1: ([u8; N], V), item_2: ([u8; N], V), depth: usize) -> ConcurrentMapInternal<N, V> {
+        match (Self::go_left(item_1.0, depth), Self::go_left(item_2.0, depth)) {
+            (true, false) => ConcurrentMapInternal::List([Box::new(Self::new_with(item_1)), Box::new(Self::new_with(item_2))]),
+            (false, true) => ConcurrentMapInternal::List([Box::new(Self::new_with(item_2)), Box::new(Self::new_with(item_1))]),
+            (true, true) => ConcurrentMapInternal::List([Box::new(ConcurrentMap(RwLock::new(Self::deepen_tree(item_1, item_2, depth + 1)))), Box::new(ConcurrentMap::new())]),
+            (false, false) => ConcurrentMapInternal::List([Box::new(ConcurrentMap::new()), Box::new(ConcurrentMap(RwLock::new(Self::deepen_tree(item_1, item_2, depth + 1))))])
+        }
     }
 }
