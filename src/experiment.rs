@@ -91,6 +91,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                                     )
                                 }
                                 else{
+                                    //insert and restructure
                                     *write_lock = Self::deepen_tree(*existing, (key, value), depth);
                                     Some(true)
                                 }
