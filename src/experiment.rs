@@ -15,13 +15,29 @@ impl<const N: usize, V: Copy> ConcurrentMapInternal<N, V>{
 }
 
 impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
-
+    
     const fn get_index(key: [u8; N], depth: usize) -> u8{
         match depth % 4{
             0 => (key[depth/4] & 0b11000000) >> 6,
             1 => (key[depth/4] & 0b00110000) >> 4,
             2 => (key[depth/4] & 0b00001100) >> 2,
             _ => key[depth/4] & 0b00000011
+        }
+    }
+    
+    pub fn len(&self) -> usize{
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                ConcurrentMapInternal::Item(_,_) => 1,
+                ConcurrentMapInternal::List(list) => list.iter().map(|x| x.1.len()).sum()
+            }
+        }).unwrap()
+    }
+    
+    pub fn iter(&self) -> ConcurrentMapIterator<N, V>{
+        ConcurrentMapIterator{
+            map: self,
+            previous_key: self.get_min().map(|x| x.0)
         }
     }
     
@@ -49,6 +65,32 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                     let index = Self::get_index(key, depth);
                     list.iter().find(|x| x.0 == index)
                         .and_then(|x| x.1.get_internal(key, depth + 1))
+                }
+            }
+        }).unwrap()
+    }
+    
+    fn get_next(&self, key: [u8; N], depth: usize) -> Option<([u8; N], V)>{
+        //go down to where key is or would be at item end node
+        //then continuously go up and look for next index until find one 
+        //then go down and find minimum key in that
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                ConcurrentMapInternal::Item(item_key, item_value) => ,
+                ConcurrentMapInternal::List(list) => {
+                    
+                }
+            }
+        }).unwrap()
+    }
+    
+    pub fn get_min(&self) -> Option<([u8; N], V)>{
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                ConcurrentMapInternal::Item(item_key, item_value) => Some((*item_key, *item_value)),
+                ConcurrentMapInternal::List(list) => {
+                    list.iter().min_by_key(|x| x.0)
+                        .and_then(|x| x.1.get_min())
                 }
             }
         }).unwrap()
@@ -125,7 +167,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         ConcurrentMapInternal::List(new_vec)
     }
 
-    pub fn remove(&self, key: [u8; N], value: V){
+    /*pub fn remove(&self, key: [u8; N], value: V){
         self.remove_if(key, value, &|_,_| true)
     }
 
@@ -163,5 +205,58 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                 }).unwrap();
             }
         }
+    }*/
+}
+
+struct ConcurrentMapIterator<'a, const N: usize, V>{
+    map: &'a ConcurrentMap<N, V>,
+    previous_key: Option<[u8; N]>
+}
+
+impl<'a, const N: usize, V: Copy> Iterator for ConcurrentMapIterator<'a, N, V>{
+    type Item = ([u8; N], V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.previous_key {
+            None => None,
+            Some(last_key) => {
+                let to_return = self.map.get_next(last_key, 0);
+                self.previous_key = to_return.map(|x| x.0);
+                to_return
+            }
+        }
     }
 }
+
+impl<const N: usize, V: Copy> IntoIterator for ConcurrentMap<N, V>{
+    type Item = ([u8; N], V);
+    type IntoIter = ConcurrentMapIntoIterator<N, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        ConcurrentMapIntoIterator{
+            map: self,
+            previous_key: 
+        }
+    }
+}
+
+struct ConcurrentMapIntoIterator<const N: usize, V>{
+    map: ConcurrentMap<N, V>,
+    previous_key: Option<[u8; N]>
+}
+
+impl<const N: usize, V: Copy> Iterator for ConcurrentMapIntoIterator<N, V>{
+    type Item = ([u8; N], V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.previous_key {
+            None => None,
+            Some(last_key) => {
+                let to_return = self.map.get_next(last_key, 0);
+                self.previous_key = to_return.map(|x| x.0);
+                to_return
+            }
+        }
+    }
+}
+

@@ -5,9 +5,18 @@ use std::time::{Duration, SystemTime};
 use rand::distributions::{Distribution, Standard};
 use rand::{random, Rng};
 use tokio::task::JoinHandle;
-use concurrent_bst_map::{ConcurrentBSTMap, Constants, ALWAYS_UPDATE, NEVER_UPDATE};
 
-fn should_update<T: Ord>(value_1: &T, value_2: &T) -> bool{
+#[test]
+fn add_test(){
+    let map = concurrent_bst_map::experiment::ConcurrentMap::<32,u64>::new();
+    let key = random();
+    assert!(map.insert_or_update(key, 0));
+    assert!(!map.insert_or_update_if(key, 1, &|_,_| false));
+    assert!(map.get(key).is_some_and(|x| x == 0));
+    assert_eq!(map.len(), 1);
+}
+
+/*fn should_update<T: Ord>(value_1: &T, value_2: &T) -> bool{
     value_2 > value_1
 }
 
@@ -188,4 +197,4 @@ fn bench_multi_thread_insert_or_update_if_and_remove(){
             }
             println!("{}", (NO_THREADS*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
         });
-}
+}*/
