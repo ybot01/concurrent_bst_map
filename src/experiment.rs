@@ -62,6 +62,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     fn insert_or_update_if_internal(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool, depth: usize) -> bool{
         loop{
             match self.0.read().map(|read_lock| {
+                //change to only check if current item is less than or greater so dont have to do bit shifting
                 match &*read_lock{
                     ConcurrentMapInternal::Item(_) => None, //change to write lock
                     ConcurrentMapInternal::List(list) => Some(list[Self::get_index(key, depth)].insert_or_update_if_internal(key, value, should_update, depth + 1))
@@ -113,6 +114,22 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
             (false, true) => ConcurrentMapInternal::List([Box::new(Self::new_with(item_2)), Box::new(Self::new_with(item_1))]),
             (true, true) => ConcurrentMapInternal::List([Box::new(ConcurrentMap(RwLock::new(Self::deepen_tree(item_1, item_2, depth + 1)))), Box::new(ConcurrentMap::new())]),
             (false, false) => ConcurrentMapInternal::List([Box::new(ConcurrentMap::new()), Box::new(ConcurrentMap(RwLock::new(Self::deepen_tree(item_1, item_2, depth + 1))))])
+        }
+    }
+
+    pub fn remove(&self, key: [u8; N], value: V){
+        self.remove_if(key, value, &|_,_| true)
+    }
+
+    pub fn remove_if_internal(&self, key: [u8; N], value: V, should_remove: &impl Fn(&[u8; N], &V) -> bool, depth: usize){
+        match self.0.read().map(|read_lock| {
+            match &*read_lock{
+                ConcurrentMapInternal::Item(_) => None, //change to write lock
+                ConcurrentMapInternal::List(list) => Some(list[Self::get_index(key, depth)].remove_if_internal(key, value, should_remove, depth + 1))
+            }
+        }).unwrap(){
+            None => (),
+            Some(x) => return x
         }
     }
 }
