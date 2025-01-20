@@ -1,4 +1,4 @@
-//mod non_recursive;
+mod non_recursive;
 mod recursive;
 pub mod experiment;
 
