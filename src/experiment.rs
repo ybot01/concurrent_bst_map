@@ -141,7 +141,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                     }
                     Some(inner) => {
                         match inner.as_mut(){
-                            ConcurrentMapInternal::Item(item_key,item_value) => {
+                            ConcurrentMapInternal::Item(item_key, item_value) => {
                                 if *item_key == key{
                                     //update
                                     Some(
@@ -183,51 +183,36 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         ConcurrentMapInternal::List(new_list)
     }
 
-    /*pub fn remove(&self, key: [u8; N], value: V){
-        self.remove_if(key, value, &|_,_| true)
+    pub fn remove(&self, key: [u8; N]){
+        self.remove_if(key, &|_| true)
     }
 
-    pub fn remove_if(&self, key: [u8; N], value: V, should_remove: &impl Fn(&[u8; N], &V) -> bool){
-        self.remove_if_internal(key, value, should_remove, 0);
-    }*/
+    pub fn remove_if(&self, key: [u8; N], should_remove: &impl Fn(&V) -> bool){
+        self.remove_if_internal(key, should_remove, 0);
+    }
 
-    fn remove_if_internal(&self, key: [u8; N], value: V, should_remove: &impl Fn(&[u8; N], &V) -> bool, depth: usize) -> bool{
-        loop {
-            match self.0.read().map(|read_lock| {
-                match &*read_lock{
-                    None => Some(false),
-                    Some(inner) => {
-                        match inner.as_ref(){
-                            ConcurrentMapInternal::Item(_,_) => None, //change to read lock
-                            ConcurrentMapInternal::List(list) => Some(list[Self::get_index(key, depth)].remove_if_internal(key, value, should_remove, depth + 1))
-                        }
-                    }
-                }
-            }).unwrap(){
+    fn remove_if_internal(&self, key: [u8; N], should_remove: &impl Fn(&V) -> bool, depth: usize){
+        let index = Self::get_index(key, depth);
+        self.0.write().map(|mut write_lock| {
+            match &mut *write_lock {
                 None => (),
-                Some(x) => return x
-            }
-            match self.0.write().map(|mut write_lock| {
-                match &mut *write_lock {
-                    None => Some(false),
-                    Some(inner) => {
-                        match inner.as_mut(){
-                            ConcurrentMapInternal::Item(item_key,item_value) => {
-                                if *item_key == key{
-                                    
-                                }
-                                else{
-                                    
-                                }
+                Some(inner) => {
+                    match inner.as_mut(){
+                        ConcurrentMapInternal::Item(item_key, item_value) => {
+                            if (*item_key == key) && should_remove(item_value){
+                                *write_lock = None;
                             }
-                            ConcurrentMapInternal::List(_) => None //change back to read lock
+                        }
+                        ConcurrentMapInternal::List(list) => {
+                            list[index].remove_if_internal(key, should_remove, depth + 1);
+                            //check all items in list
+                            //if all none then set write lock to none
+                            //if 1 with some, if is vec then do nothing, if is item then set write lock to Some(that item)
+                            //if more than 1 with some then do nothing 
                         }
                     }
                 }
-            }).unwrap(){
-                None => (),
-                Some(x) => return x
             }
-        }
+        }).unwrap()
     }
 }
