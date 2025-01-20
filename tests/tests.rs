@@ -6,9 +6,10 @@ use rand::distributions::{Distribution, Standard};
 use rand::{random, Rng};
 use tokio::task::JoinHandle;
 
+
 #[test]
 fn add_test(){
-    let map = concurrent_bst_map::experiment::ConcurrentMap::<32,u64>::new();
+    let map = concurrent_bst_map::non_recursive::ConcurrentMap::<32,u64>::new();
     let key = random();
     assert!(map.insert_or_update(key, 0));
     assert!(!map.insert_or_update_if(key, 1, &|_,_| false));

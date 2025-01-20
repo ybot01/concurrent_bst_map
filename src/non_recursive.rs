@@ -1,22 +1,23 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex, RwLock};
 
-pub trait GetIndex{
-    fn get_index(&self, max_index: usize) -> usize;
+fn get_index<const N: usize>(key: [u8; N], max_index: usize) -> usize{
+    //todo
+    //need to get ratio of the key to max value of the key and then multiply that by max_index
 }
 
 #[derive(Debug)]
-pub struct ConcurrentMap<K, V>{
-    inner: LazyLock<RwLock<ConcurrentMapInternal<K, V>>>
+pub struct ConcurrentMap<const N: usize, V>{
+    inner: LazyLock<RwLock<ConcurrentMapInternal<N, V>>>
 }
 
 #[derive(Debug)]
-struct ConcurrentMapInternal<K, V>{
+struct ConcurrentMapInternal<const N: usize, V>{
     no_elements: AtomicUsize,
-    list: Vec<Mutex<Vec<(K,V)>>>
+    list: Vec<Mutex<Vec<([u8; N],V)>>>
 }
 
-impl<K: Copy + Ord, V: Copy> ConcurrentMapInternal<K, V>{
+impl<const N: usize, V: Copy> ConcurrentMapInternal<N, V>{
     fn new() -> Self{
         Self{
             no_elements: AtomicUsize::new(0),
@@ -29,44 +30,44 @@ impl<K: Copy + Ord, V: Copy> ConcurrentMapInternal<K, V>{
     }
 }
 
-impl<K: Copy + Ord + GetIndex, V: Copy> ConcurrentMap<K, V>{
+impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
 
     pub fn clear(&self){
         *self.inner.write().unwrap() = ConcurrentMapInternal::new();
     }
     
-    pub fn contains_key(&self, key: K) -> bool{
+    pub fn contains_key(&self, key: [u8; N]) -> bool{
         self.inner.read().map(|read_lock| {
-            read_lock.list[key.get_index(read_lock.list.len())].lock().unwrap().iter()
+            read_lock.list[get_index(key, read_lock.list.len())].lock().unwrap().iter()
                 .position(|x| x.0 == key).is_some()
         }).unwrap()
     }
     
-    pub fn get(&self, key: K) -> Option<V>{
+    pub fn get(&self, key: [u8; N]) -> Option<V>{
         self.inner.read().map(|read_lock| {
-            read_lock.list[key.get_index(read_lock.list.len())].lock().unwrap().iter()
+            read_lock.list[get_index(key, read_lock.list.len())].lock().unwrap().iter()
                 .find(|x| x.0 == key).map(|x| x.1)
         }).unwrap()
     }
-    
-    pub fn get_min(&self) -> Option<(K,V)>{
+
+    pub fn get_min(&self) -> Option<([u8; N],V)>{
         self.inner.read().unwrap().list[0].lock().unwrap().iter().min_by_key(|x| x.0).map(|x| *x)
     }
 
-    pub fn get_max(&self) -> Option<(K,V)>{
+    pub fn get_max(&self) -> Option<([u8; N],V)>{
         self.inner.read().map(|read_lock| {
             read_lock.list[read_lock.list.len() - 1].lock().unwrap().iter()
                 .max_by_key(|x| x.0).map(|x| *x)
         }).unwrap()
     }
 
-    pub fn insert_or_update(&self, key: K, value: V) -> bool{
+    pub fn insert_or_update(&self, key: [u8; N], value: V) -> bool{
         self.insert_or_update_if(key, value, |_,_| true)
     }
 
-    pub fn insert_or_update_if(&self, key: K, value: V, should_update: impl Fn(&V, &V) -> bool) -> bool{
+    pub fn insert_or_update_if(&self, key: [u8; N], value: V, should_update: impl Fn(&V, &V) -> bool) -> bool{
         match self.inner.read().map(|read_lock| {
-            read_lock.list[key.get_index(read_lock.list.len())].lock().map(|mut mutex_lock| {
+            read_lock.list[get_index(key, read_lock.list.len())].lock().map(|mut mutex_lock| {
                 match mutex_lock.iter().position(|x| x.0 == key){
                     Some(index) => {
                         //update
@@ -100,7 +101,7 @@ impl<K: Copy + Ord + GetIndex, V: Copy> ConcurrentMap<K, V>{
                                     *inner_lock = Vec::new();
                                     old_entries
                                 }).unwrap(){
-                                    write_lock.list[entry.0.get_index(new_list_length)].lock().unwrap().push(entry)
+                                    write_lock.list[get_index(entry.0, new_list_length)].lock().unwrap().push(entry)
                                 }
                             }
                         }
@@ -125,13 +126,13 @@ impl<K: Copy + Ord + GetIndex, V: Copy> ConcurrentMap<K, V>{
         }
     }
     
-    pub fn remove(&self, key: K){
+    pub fn remove(&self, key: [u8; N]){
         self.remove_if(key, |_| true)
     }
     
-    pub fn remove_if(&self, key: K, should_remove: impl Fn(&V) -> bool){
+    pub fn remove_if(&self, key: [u8; N], should_remove: impl Fn(&V) -> bool){
         self.inner.read().map(|read_lock| {
-            read_lock.list[key.get_index(read_lock.list.len())].lock().map(|mut mutex_lock| {
+            read_lock.list[get_index(key, read_lock.list.len())].lock().map(|mut mutex_lock| {
                 match mutex_lock.iter().position(|x| x.0 == key){
                     Some(index) => if should_remove(&mutex_lock[index].1) {_ = mutex_lock.swap_remove(index)},
                     None => ()
