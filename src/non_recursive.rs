@@ -2,8 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, RwLock};
 
 fn get_index<const N: usize>(key: [u8; N], max_index: usize) -> usize{
-    //todo
-    //need to get ratio of the key to max value of the key and then multiply that by max_index
+    ((((max_index as f64) / (u32::MAX as f64)) * (u32::from_be_bytes(<[u8;4]>::try_from(&key[0..4]).unwrap()) as f64)) as usize).min(max_index - 1)
 }
 
 const MIN_LIST_LENGTH: usize = 1024;
@@ -33,8 +32,6 @@ impl<const N: usize, V: Copy> ConcurrentMapInternal<N, V>{
 }
 
 impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
-
-    
     
     pub fn clear(&self){
         *self.inner.write().unwrap() = ConcurrentMapInternal::new();
@@ -84,7 +81,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                     None => {
                         //insert
                         write_lock.push((key, value));
-                        (true, read_lock.no_elements.fetch_add(1, Ordering::Relaxed) >= read_lock.list.len())
+                        (true, read_lock.no_elements.fetch_add(1, Ordering::Relaxed) >= (read_lock.list.len() * 2))
                     }
                 }
             }).unwrap()
@@ -95,9 +92,9 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                     self.inner.write().map(|mut write_lock| {
                         let old_list_length = write_lock.list.len();
                         let no_elements = write_lock.no_elements.load(Ordering::Relaxed);
-                        if no_elements >= old_list_length {
-                            let mut new_list_length = old_list_length;
-                            while no_elements >= new_list_length {new_list_length *= 2}
+                        let mut new_list_length = old_list_length;
+                        while no_elements >= (new_list_length * 2) {new_list_length *= 2}
+                        if new_list_length > old_list_length{
                             for _ in old_list_length..new_list_length {write_lock.list.push(RwLock::new(Vec::new()))}
                             for i in 0..old_list_length{
                                 for entry in write_lock.list[i].write().map(|mut inner_lock| {
@@ -153,18 +150,18 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                 let old_list_length = write_lock.list.len();
                 let no_elements = write_lock.no_elements.load(Ordering::Relaxed);
                 let mut new_list_length = old_list_length;
-                while (new_list_length > MIN_LIST_LENGTH) && (no_elements < (new_list_length / 2)){new_list_length /= 2; }
-                if new_list_length > old_list_length{
-                    let mut new_vec = Vec::new();
-                    for _ in 0..new_list_length {new_vec.push(RwLock::new(Vec::<([u8; N], V)>::new()))}
+                while (new_list_length > MIN_LIST_LENGTH) && (no_elements < (new_list_length / 2)) {new_list_length /= 2}
+                if new_list_length < old_list_length{
                     for i in 0..old_list_length{
-                        write_lock.list[i].read().map(|read_lock| {
-                            for entry in &*read_lock{
-                                new_vec[get_index(entry.0, new_list_length)].write().unwrap().push(*entry);
-                            }
-                        }).unwrap();
+                        for entry in write_lock.list[i].write().map(|mut inner_lock| {
+                            let old_entries = inner_lock.clone();
+                            *inner_lock = Vec::new();
+                            old_entries
+                        }).unwrap(){
+                            write_lock.list[get_index(entry.0, new_list_length)].write().unwrap().push(entry)
+                        }
                     }
-                    write_lock.list = new_vec;
+                    for i in (new_list_length..old_list_length).rev() {_ = write_lock.list.swap_remove(i)}
                 }
             }).unwrap();
         }
