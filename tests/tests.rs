@@ -2,6 +2,7 @@ use std::ops::Sub;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, RwLock};
 use std::time::{Duration, SystemTime};
+use concurrent_bst_map::non_recursive::ConcurrentMap;
 use rand::distributions::{Distribution, Standard};
 use rand::{random, Rng};
 use tokio::task::JoinHandle;
@@ -9,10 +10,10 @@ use tokio::task::JoinHandle;
 
 #[test]
 fn add_test(){
-    let map = concurrent_bst_map::non_recursive::ConcurrentMap::<32,u64>::new();
+    let map = ConcurrentMap::<32,u64>::new();
     let key = random();
     assert!(map.insert_or_update(key, 0));
-    assert!(!map.insert_or_update_if(key, 1, &|_,_| false));
+    assert!(!map.insert_or_update_if(key, 1, |_,_| false));
     assert!(map.get(key).is_some_and(|x| x == 0));
     assert_eq!(map.len(), 1);
 }
@@ -21,7 +22,7 @@ fn add_test(){
     value_2 > value_1
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]value
 struct U64Wrapper(u64);
 
 impl Distribution<U64Wrapper> for Standard{
@@ -50,12 +51,14 @@ impl U64Wrapper{
         U64Wrapper(value)
     }
 }
-
+*/
 fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where Standard: Distribution<T>{
     let mut to_return = Vec::<T>::new();
     for _ in 0..length {to_return.push(random())}
     to_return
 }
+
+/*
 
 #[test]
 fn recursion_test(){
@@ -130,14 +133,16 @@ fn bench_insert_or_update_if(){
     assert_eq!(true_count, total);
 }
 
-static GLOBAL_BST: ConcurrentBSTMap<U64Wrapper, u64> = ConcurrentBSTMap::new();
+
+*/
+static GLOBAL_BST: ConcurrentMap<32, u64> = ConcurrentMap::new();
 
 static TRUE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 const NO_THREADS: usize = 10;
 const TOTAL_PER_THREAD: usize = 100000;
 
-static USER_LIST: LazyLock<RwLock<Vec<(U64Wrapper, u64)>>> = LazyLock::new(|| RwLock::new(get_vec_of_key_values(NO_THREADS*TOTAL_PER_THREAD)));
+static USER_LIST: LazyLock<RwLock<Vec<([u8; 32], u64)>>> = LazyLock::new(|| RwLock::new(get_vec_of_key_values(NO_THREADS*TOTAL_PER_THREAD)));
 
 #[test]
 fn bench_multi_thread_insert_or_update_if_and_remove(){
@@ -155,7 +160,7 @@ fn bench_multi_thread_insert_or_update_if_and_remove(){
                     USER_LIST.read().map(|read_lock| {
                         for i in start_index..(start_index+TOTAL_PER_THREAD) {
                             let (key, value) = read_lock[i];
-                            if GLOBAL_BST.insert_or_update(key, value, &should_update).is_ok_and(|x| x){
+                            if GLOBAL_BST.insert_or_update(key, value){
                                 TRUE_COUNT.fetch_add(1, Ordering::Relaxed);
                             }
                         }
@@ -197,5 +202,6 @@ fn bench_multi_thread_insert_or_update_if_and_remove(){
                 }
             }
             println!("{}", (NO_THREADS*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
+            assert!(GLOBAL_BST.len() == 0);
         });
-}*/
+}

@@ -2,8 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex, RwLock};
 
 fn get_index<const N: usize>(key: [u8; N], max_index: usize) -> usize{
-    //todo
-    //need to get ratio of the key to max value of the key and then multiply that by max_index
+    ((((u64::from_be_bytes(<[u8;8]>::try_from(&key[0..8]).unwrap()) as f64) / (u64::MAX as f64)) * (max_index as f64)) as usize).min(max_index - 1)
 }
 
 #[derive(Debug)]
@@ -134,7 +133,10 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         self.inner.read().map(|read_lock| {
             read_lock.list[get_index(key, read_lock.list.len())].lock().map(|mut mutex_lock| {
                 match mutex_lock.iter().position(|x| x.0 == key){
-                    Some(index) => if should_remove(&mutex_lock[index].1) {_ = mutex_lock.swap_remove(index)},
+                    Some(index) => if should_remove(&mutex_lock[index].1) {
+                        mutex_lock.swap_remove(index);
+                        read_lock.no_elements.fetch_sub(1, Ordering::Relaxed);
+                    }
                     None => ()
                 }
             }).unwrap();
