@@ -5,6 +5,17 @@ fn get_index<const N: usize>(key: [u8; N], max_index: usize) -> usize{
     ((((max_index as f64) / (u32::MAX as f64)) * (u32::from_be_bytes(<[u8;4]>::try_from(&key[0..4]).unwrap()) as f64)) as usize).min(max_index - 1)
 }
 
+fn leading_zeroes<const N: usize>(array_1: [u8; N], array_2: [u8; N]) -> u32{
+    let mut leading_zeroes = 0;
+    let mut temp;
+    for i in 0..N{
+        temp = (array_1[i]^array_2[i]).leading_zeros();
+        leading_zeroes += temp;
+        if temp < 8 {break}
+    }
+    leading_zeroes
+}
+
 const MIN_LIST_LENGTH: usize = 1024;
 
 #[derive(Debug)]
@@ -59,6 +70,66 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         self.inner.read().map(|read_lock| {
             read_lock.list[read_lock.list.len() - 1].read().unwrap().iter()
                 .max_by_key(|x| x.0).map(|x| *x)
+        }).unwrap()
+    }
+    
+    pub fn get_or_closest_by_key(&self, key: [u8; N], include_key: bool) -> Option<([u8; N],V)>{
+        self.inner.read().map(|read_lock| {
+            let index = get_index(key, read_lock.list.len());
+            let mut min = true;
+            let mut max = true;
+            match read_lock.list[index].read().unwrap().iter()
+                .filter(|x| include_key || (x.0 != key))
+                .max_by_key(|x| {
+                    if x.0 < key {min = false}
+                    else if x.0 > key {max = false}
+                    leading_zeroes(x.0, key)
+                }).map(|x| *x)
+            {
+                None => {
+                    //get closest left and right
+                    let mut left_closest = None;
+                    for i in (0..index).rev(){
+                        match read_lock.list[i].read().unwrap().iter().max_by_key(|x| leading_zeroes(x.0, key)).map(|x| *x) {
+                            None => (),
+                            Some(x) => { 
+                                left_closest = Some(x);
+                                break
+                            }
+                        }
+                    }
+                    let mut right_closest = None;
+                    for i in (index+1)..read_lock.list.len(){
+                        match read_lock.list[i].read().unwrap().iter().max_by_key(|x| leading_zeroes(x.0, key)).map(|x| *x) {
+                            None => (),
+                            Some(x) => {
+                                right_closest = Some(x);
+                                break
+                            }
+                        }
+                    }
+                    [left_closest, right_closest].iter().filter_map(|x| *x).max_by_key(|x| leading_zeroes(x.0, key))
+                }
+                Some(closest) => {
+                    if min == max {return Some(closest)}
+                    else if min {
+                        //get closest left
+                        match read_lock.list[if index == 0 {read_lock.list.len() - 1} else {index - 1}].read().unwrap().iter()
+                            .max_by_key(|x| leading_zeroes(x.0, key)).map(|x| *x){
+                            None => Some(closest),
+                            Some(left_closest) => [left_closest, closest].iter().max_by_key(|x| leading_zeroes(x.0, key)).map(|x| *x)
+                        }
+                    }
+                    else{
+                        //get closest right
+                        match read_lock.list[if index == (read_lock.list.len() - 1) {0} else {index + 1}].read().unwrap().iter()
+                            .max_by_key(|x| leading_zeroes(x.0, key)).map(|x| *x){
+                            None => Some(closest),
+                            Some(right_closest) => [right_closest, closest].iter().max_by_key(|x| leading_zeroes(x.0, key)).map(|x| *x)
+                        }
+                    }
+                }
+            }
         }).unwrap()
     }
 
