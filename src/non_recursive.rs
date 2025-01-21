@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{LazyLock, Mutex, RwLock};
+use std::sync::{LazyLock, RwLock};
 
 fn get_index<const N: usize>(key: [u8; N], max_index: usize) -> usize{
     //todo
@@ -14,7 +14,7 @@ pub struct ConcurrentMap<const N: usize, V>{
 #[derive(Debug)]
 struct ConcurrentMapInternal<const N: usize, V>{
     no_elements: AtomicUsize,
-    list: Vec<Mutex<Vec<([u8; N],V)>>>
+    list: Vec<RwLock<Vec<([u8; N],V)>>>
 }
 
 impl<const N: usize, V: Copy> ConcurrentMapInternal<N, V>{
@@ -23,7 +23,7 @@ impl<const N: usize, V: Copy> ConcurrentMapInternal<N, V>{
             no_elements: AtomicUsize::new(0),
             list: {
                 let mut new_vec = Vec::new();
-                for _ in 0..1024 {new_vec.push(Mutex::new(Vec::new()))}
+                for _ in 0..1024 {new_vec.push(RwLock::new(Vec::new()))}
                 new_vec
             }
         }
@@ -38,25 +38,25 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     
     pub fn contains_key(&self, key: [u8; N]) -> bool{
         self.inner.read().map(|read_lock| {
-            read_lock.list[get_index(key, read_lock.list.len())].lock().unwrap().iter()
+            read_lock.list[get_index(key, read_lock.list.len())].read().unwrap().iter()
                 .position(|x| x.0 == key).is_some()
         }).unwrap()
     }
     
     pub fn get(&self, key: [u8; N]) -> Option<V>{
         self.inner.read().map(|read_lock| {
-            read_lock.list[get_index(key, read_lock.list.len())].lock().unwrap().iter()
+            read_lock.list[get_index(key, read_lock.list.len())].read().unwrap().iter()
                 .find(|x| x.0 == key).map(|x| x.1)
         }).unwrap()
     }
 
     pub fn get_min(&self) -> Option<([u8; N],V)>{
-        self.inner.read().unwrap().list[0].lock().unwrap().iter().min_by_key(|x| x.0).map(|x| *x)
+        self.inner.read().unwrap().list[0].read().unwrap().iter().min_by_key(|x| x.0).map(|x| *x)
     }
 
     pub fn get_max(&self) -> Option<([u8; N],V)>{
         self.inner.read().map(|read_lock| {
-            read_lock.list[read_lock.list.len() - 1].lock().unwrap().iter()
+            read_lock.list[read_lock.list.len() - 1].read().unwrap().iter()
                 .max_by_key(|x| x.0).map(|x| *x)
         }).unwrap()
     }
@@ -67,19 +67,19 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
 
     pub fn insert_or_update_if(&self, key: [u8; N], value: V, should_update: impl Fn(&V, &V) -> bool) -> bool{
         match self.inner.read().map(|read_lock| {
-            read_lock.list[get_index(key, read_lock.list.len())].lock().map(|mut mutex_lock| {
-                match mutex_lock.iter().position(|x| x.0 == key){
+            read_lock.list[get_index(key, read_lock.list.len())].write().map(|mut write_lock| {
+                match write_lock.iter().position(|x| x.0 == key){
                     Some(index) => {
                         //update
-                        if should_update(&mutex_lock[index].1, &value){
-                            mutex_lock[index].1 = value;
+                        if should_update(&write_lock[index].1, &value){
+                            write_lock[index].1 = value;
                             (false, true)
                         }
                         else {(false, false)}
                     }
                     None => {
                         //insert
-                        mutex_lock.push((key, value));
+                        write_lock.push((key, value));
                         (true, read_lock.no_elements.fetch_add(1, Ordering::Relaxed) >= read_lock.list.len())
                     }
                 }
@@ -94,14 +94,14 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                         if no_elements >= old_list_length {
                             let mut new_list_length = old_list_length;
                             while no_elements >= new_list_length {new_list_length *= 2}
-                            for _ in old_list_length..new_list_length {write_lock.list.push(Mutex::new(Vec::new()))}
+                            for _ in old_list_length..new_list_length {write_lock.list.push(RwLock::new(Vec::new()))}
                             for i in 0..old_list_length{
-                                for entry in write_lock.list[i].lock().map(|mut inner_lock| {
+                                for entry in write_lock.list[i].write().map(|mut inner_lock| {
                                     let old_entries = inner_lock.clone();
                                     *inner_lock = Vec::new();
                                     old_entries
                                 }).unwrap(){
-                                    write_lock.list[get_index(entry.0, new_list_length)].lock().unwrap().push(entry)
+                                    write_lock.list[get_index(entry.0, new_list_length)].write().unwrap().push(entry)
                                 }
                             }
                         }
@@ -132,9 +132,9 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     
     pub fn remove_if(&self, key: [u8; N], should_remove: impl Fn(&V) -> bool){
         self.inner.read().map(|read_lock| {
-            read_lock.list[get_index(key, read_lock.list.len())].lock().map(|mut mutex_lock| {
-                match mutex_lock.iter().position(|x| x.0 == key){
-                    Some(index) => if should_remove(&mutex_lock[index].1) {_ = mutex_lock.swap_remove(index)},
+            read_lock.list[get_index(key, read_lock.list.len())].write().map(|mut write_lock| {
+                match write_lock.iter().position(|x| x.0 == key){
+                    Some(index) => if should_remove(&write_lock[index].1) {_ = write_lock.swap_remove(index)},
                     None => ()
                 }
             }).unwrap();
