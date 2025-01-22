@@ -15,7 +15,9 @@ lto = "fat"
 panic = "abort"
 strip = "symbols"
 
-[dev-dependencies]
+[dependencies]
 rand = { version = "0.8.5" }
+
+[dev-dependencies]
 tokio = { version = "1.43.0", features = ["full"] }
 

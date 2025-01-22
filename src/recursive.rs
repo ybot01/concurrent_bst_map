@@ -16,13 +16,13 @@ impl fmt::Display for MaxDepthReachedError {
 impl std::error::Error for MaxDepthReachedError {}
 
 #[derive(Debug)]
-struct ConcurrentBSTInternal<const N: usize, V>{
+struct ConcurrentBSTInternal<const N: usize, V, const MAX_DEPTH: u16>{
     key: [u8; N],
     value: V,
-    child_nodes: [ConcurrentBSTMap<N,V>; 2]
+    child_nodes: [ConcurrentBSTMap<N, V, MAX_DEPTH>; 2]
 }
 
-impl<const N: usize, V: Copy> ConcurrentBSTInternal<N,V>{
+impl<const N: usize, V: Copy, const MAX_DEPTH: u16> ConcurrentBSTInternal<N, V, MAX_DEPTH>{
 
     fn new(key: [u8; N], value: V) -> Self {
         Self {
@@ -34,9 +34,9 @@ impl<const N: usize, V: Copy> ConcurrentBSTInternal<N,V>{
 }
 
 #[derive(Debug)]
-pub struct ConcurrentBSTMap<const N: usize, V>(RwLock<Option<Box<ConcurrentBSTInternal<N,V>>>>);
+pub struct ConcurrentBSTMap<const N: usize, V, const MAX_DEPTH: u16>(RwLock<Option<Box<ConcurrentBSTInternal<N, V, MAX_DEPTH>>>>);
 
-impl<const N: usize, V: Copy> ConcurrentBSTMap<N,V>{
+impl<const N: usize, V: Copy, const MAX_DEPTH: u16> ConcurrentBSTMap<N, V, MAX_DEPTH>{
 
     pub fn clear(&self){
         *self.0.write().unwrap() = None;
@@ -197,8 +197,12 @@ impl<const N: usize, V: Copy> ConcurrentBSTMap<N,V>{
         }).unwrap()
     }*/
 
-    pub fn insert_or_update(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool, max_depth: u32) -> Result<bool, MaxDepthReachedError>{
-        if max_depth == 0 {return Err(MaxDepthReachedError)}
+    pub fn insert_or_update(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool) -> Result<bool, MaxDepthReachedError>{
+        self.insert_or_update_internal(key, value, should_update, MAX_DEPTH)
+    }
+    
+    fn insert_or_update_internal(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool, current_depth: u16) -> Result<bool, MaxDepthReachedError>{
+        if current_depth == 0 {return Err(MaxDepthReachedError)}
         loop{
             match self.0.read().map(|read_lock| {
                 match &*read_lock{
@@ -207,8 +211,8 @@ impl<const N: usize, V: Copy> ConcurrentBSTMap<N,V>{
                         if node.key != key {
                             Some(
                                 //should never be 0
-                                if max_depth < 2 {Err(MaxDepthReachedError)}
-                                else {node.child_nodes[Self::get_index(key, node.key)].insert_or_update(key, value, should_update, max_depth - 1)}
+                                if current_depth < 2 {Err(MaxDepthReachedError)}
+                                else {node.child_nodes[Self::get_index(key, node.key)].insert_or_update_internal(key, value, should_update, current_depth - 1)}
                             )
                         }
                         else {None}
@@ -417,9 +421,9 @@ impl<'a, const N: usize, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, N, V
 }*/
 
 #[derive(Debug)]
-pub struct ConcurrentBSTSet<const N: usize>(ConcurrentBSTMap<N, ()>);
+pub struct ConcurrentBSTSet<const N: usize, const MAX_DEPTH: u16>(ConcurrentBSTMap<N, (), MAX_DEPTH>);
 
-impl<const N: usize> ConcurrentBSTSet<N>{
+impl<const N: usize, const MAX_DEPTH: u16> ConcurrentBSTSet<N, MAX_DEPTH>{
 
     pub fn clear(&self){
         self.0.clear();
@@ -445,8 +449,8 @@ impl<const N: usize> ConcurrentBSTSet<N>{
         self.0.get_next(key).map(|x| x.0)
     }*/
 
-    pub fn insert(&self, key: [u8; N], max_depth: u32) -> Result<(), MaxDepthReachedError>{
-        self.0.insert_or_update(key, (), &NEVER_UPDATE, max_depth).map(|_| ())
+    pub fn insert(&self, key: [u8; N]) -> Result<(), MaxDepthReachedError>{
+        self.0.insert_or_update(key, (), &NEVER_UPDATE).map(|_| ())
     }
 
     pub fn is_empty(&self) -> bool{
