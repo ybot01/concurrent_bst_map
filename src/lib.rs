@@ -1,5 +1,5 @@
 pub mod non_recursive;
-mod recursive;
+pub mod recursive;
 pub mod experiment;
 
 #[allow(non_snake_case)]

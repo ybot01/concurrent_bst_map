@@ -1,14 +1,8 @@
 use std::fmt;
-use std::ops::Sub;
 use std::sync::RwLock;
 use crate::{ALWAYS_UPDATE, NEVER_UPDATE};
 
-pub trait Constants {
-    const MAX_DEPTH: u32;
-    const MAX: Self;
-    const ONE: Self;
-    const ZERO: Self;
-}
+pub const DEFAULT_MAX_DEPTH: u32 = 500;
 
 #[derive(Debug, Clone, Copy)]
 pub struct MaxDepthReachedError;
@@ -22,15 +16,15 @@ impl fmt::Display for MaxDepthReachedError {
 impl std::error::Error for MaxDepthReachedError {}
 
 #[derive(Debug)]
-struct ConcurrentBSTInternal<K,V>{
-    key: K,
+struct ConcurrentBSTInternal<const N: usize, V>{
+    key: [u8; N],
     value: V,
-    child_nodes: [ConcurrentBSTMap<K,V>; 2]
+    child_nodes: [ConcurrentBSTMap<N,V>; 2]
 }
 
-impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTInternal<K,V>{
+impl<const N: usize, V: Copy> ConcurrentBSTInternal<N,V>{
 
-    fn new(key: K, value: V) -> Self {
+    fn new(key: [u8; N], value: V) -> Self {
         Self {
             key,
             value,
@@ -40,15 +34,15 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTInternal
 }
 
 #[derive(Debug)]
-pub struct ConcurrentBSTMap<K,V>(RwLock<Option<Box<ConcurrentBSTInternal<K,V>>>>);
+pub struct ConcurrentBSTMap<const N: usize, V>(RwLock<Option<Box<ConcurrentBSTInternal<N,V>>>>);
 
-impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>{
+impl<const N: usize, V: Copy> ConcurrentBSTMap<N,V>{
 
     pub fn clear(&self){
         *self.0.write().unwrap() = None;
     }
 
-    pub fn contains_key(&self, key: K) -> bool{
+    pub fn contains_key(&self, key: [u8; N]) -> bool{
         self.0.read().map(|read_lock| {
             match &*read_lock{
                 None => false,
@@ -60,7 +54,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
         }).unwrap()
     }
 
-    pub fn copy(&self, rand_index_func: impl Fn(usize) -> usize) -> Self{
+    /*pub fn copy(&self, rand_index_func: impl Fn(usize) -> usize) -> Self{
         let mut all_key_values = self.get_all_key_values();
         loop{
             let mut error = false;
@@ -72,7 +66,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
             }
             if !error {return new_bst}
         }
-    }
+    }*/
 
     pub fn depth(&self) -> u32{
         self.0.read().map(|read_lock| {
@@ -85,7 +79,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
         }).unwrap()
     }
 
-    pub fn get(&self, key: K) -> Option<V>{
+    pub fn get(&self, key: [u8; N]) -> Option<V>{
         self.0.read().map(|read_lock| {
             match &*read_lock{
                 None => None,
@@ -97,7 +91,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
         }).unwrap()
     }
 
-    pub fn get_all_key_values(&self) -> Vec<(K,V)>{
+    pub fn get_all_key_values(&self) -> Vec<([u8; N],V)>{
         self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => Vec::new(),
@@ -111,15 +105,15 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
         }).unwrap()
     }
 
-    pub fn get_max(&self) -> Option<(K,V)> {
+    pub fn get_max(&self) -> Option<([u8; N],V)> {
         self.get_min_or_max(false)
     }
 
-    pub fn get_min(&self) -> Option<(K,V)>{
+    pub fn get_min(&self) -> Option<([u8; N],V)>{
         self.get_min_or_max(true)
     }
 
-    fn get_or_closest_by_key_internal(&self, key: K, closest: (K, V), include_key: bool, all_left: bool, all_right: bool) -> Option<((K, V), bool, bool)>{
+    /*fn get_or_closest_by_key_internal(&self, key: [u8; N], closest: ([u8; N], V), include_key: bool, all_left: bool, all_right: bool) -> Option<(([u8; N], V), bool, bool)>{
         self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
@@ -142,9 +136,9 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
                 }
             }
         }).unwrap()
-    }
+    }*/
 
-    pub fn get_or_closest_by_key(&self, key: K, include_key: bool) -> Option<(K, V)>{
+    /*pub fn get_or_closest_by_key(&self, key: [u8; N], include_key: bool) -> Option<([u8; N], V)>{
 
         let get_loop_around_diff = |item_1, item_2| {
             let abs_diff = Self::get_abs_diff(item_1, item_2);
@@ -186,9 +180,9 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
                 )
             }
         }
-    }
+    }*/
 
-    pub fn get_next(&self, key: K) -> Option<(K, V)>{
+    /*pub fn get_next(&self, key: [u8; N]) -> Option<([u8; N], V)>{
         self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
@@ -201,14 +195,10 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
                 }
             }
         }).unwrap()
-    }
+    }*/
 
-    pub fn insert_or_update(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool) -> Result<bool, MaxDepthReachedError>{
-        self.insert_or_update_internal(key, value, should_update, K::MAX_DEPTH)
-    }
-
-    fn insert_or_update_internal(&self, key: K, value: V, should_update: &impl Fn(&V, &V) -> bool, depth_remaining: u32) -> Result<bool, MaxDepthReachedError>{
-        if depth_remaining == 0 {return Err(MaxDepthReachedError)}
+    pub fn insert_or_update(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool, max_depth: u32) -> Result<bool, MaxDepthReachedError>{
+        if max_depth == 0 {return Err(MaxDepthReachedError)}
         loop{
             match self.0.read().map(|read_lock| {
                 match &*read_lock{
@@ -217,8 +207,8 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
                         if node.key != key {
                             Some(
                                 //should never be 0
-                                if depth_remaining < 2 {Err(MaxDepthReachedError)}
-                                else {node.child_nodes[Self::get_index(key, node.key)].insert_or_update_internal(key, value, should_update, depth_remaining - 1)}
+                                if max_depth < 2 {Err(MaxDepthReachedError)}
+                                else {node.child_nodes[Self::get_index(key, node.key)].insert_or_update(key, value, should_update, max_depth - 1)}
                             )
                         }
                         else {None}
@@ -261,12 +251,12 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
         self.len() == 0
     }
 
-    pub fn iter(&self) -> ConcurrentBSTMapIterator<K, V>{
+    /*pub fn iter(&self) -> ConcurrentBSTMapIterator<N, V>{
         ConcurrentBSTMapIterator{
             map: self,
             current_key: self.get_min().map(|x| x.0)
         }
-    }
+    }*/
 
     pub fn len(&self) -> usize{
         self.0.read().map(|read_lock| {
@@ -283,11 +273,11 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
         Self(RwLock::new(None))
     }
 
-    pub fn remove(&self, key: K){
-        self.remove_if(key, &|_, _| true)
+    pub fn remove(&self, key: [u8; N]){
+        self.remove_if(key, &|_| true)
     }
 
-    pub fn remove_if(&self, key: K, should_remove: &impl Fn(&K, &V) -> bool){
+    pub fn remove_if(&self, key: [u8; N], should_remove: &impl Fn(&V) -> bool){
         loop{
             if self.0.read().map(|read_lock| {
                 match &*read_lock{
@@ -307,7 +297,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
                     Some(node) => {
                         //if a different key than before then retry the read lock
                         if node.key != key {false}
-                        else if should_remove(&node.key, &node.value){
+                        else if should_remove(&node.value){
                             match node.child_nodes[1].get_replacement_key_value(true)
                                 .or(node.child_nodes[0].get_replacement_key_value(false)) {
                                 None => *write_lock = None,
@@ -322,23 +312,23 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
         }
     }
 
-    pub fn retain(&self, criteria: &impl Fn(&K, &V) -> bool){
+    /*pub fn retain(&self, criteria: &impl Fn(&[u8; N], &V) -> bool){
         self.iter().for_each(|(key, value)| {
             if criteria(&key, &value){
                 //delete
             }
         });
-    }
+    }*/
 
-    fn get_abs_diff(item_1: K, item_2: K) -> K{
+    /*fn get_abs_diff(item_1: [u8; N], item_2: [u8; N]) -> [u8; N]{
         if item_2 > item_1 {item_2 - item_1} else {item_1 - item_2}
-    }
+    }*/
 
-    fn get_index(target: K, current: K) -> usize{
+    fn get_index(target: [u8; N], current: [u8; N]) -> usize{
         if target < current {0} else {1}
     }
 
-    fn get_min_or_max(&self, min: bool) -> Option<(K,V)>{
+    fn get_min_or_max(&self, min: bool) -> Option<([u8; N],V)>{
         self.0.read().map(|read_lock| {
             match &*read_lock{
                 None => None,
@@ -349,7 +339,7 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
         }).unwrap()
     }
 
-    fn get_replacement_key_value(&self, go_left: bool) -> Option<(K,V)>{
+    fn get_replacement_key_value(&self, go_left: bool) -> Option<([u8; N],V)>{
         self.0.write().map(|mut write_lock| {
             match &mut *write_lock {
                 None => None,
@@ -373,10 +363,10 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> ConcurrentBSTMap<K,V>
     }
 }
 
-impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> IntoIterator for ConcurrentBSTMap<K, V>{
-    type Item = (K, V);
+/*mpl<const N: usize, V: Copy> IntoIterator for ConcurrentBSTMap<N, V>{
+    type Item = ([u8; N], V);
 
-    type IntoIter = ConcurrentBSTMapIntoIterator<K, V>;
+    type IntoIter = ConcurrentBSTMapIntoIterator<N, V>;
 
     fn into_iter(self) -> Self::IntoIter {
         ConcurrentBSTMapIntoIterator{
@@ -386,13 +376,13 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> IntoIterator for Conc
     }
 }
 
-pub struct ConcurrentBSTMapIntoIterator<K, V> {
-    map: ConcurrentBSTMap<K,V>,
-    current_key: Option<K>
+pub struct ConcurrentBSTMapIntoIterator<const N: usize, V> {
+    map: ConcurrentBSTMap<N,V>,
+    current_key: Option<[u8; N]>
 }
 
-impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> Iterator for ConcurrentBSTMapIntoIterator<K, V>{
-    type Item = (K,V);
+impl<const N: usize, V: Copy> Iterator for ConcurrentBSTMapIntoIterator<N, V>{
+    type Item = ([u8; N],V);
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.current_key{
@@ -404,15 +394,15 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> Iterator for Concurre
             }
         }
     }
+}*/
+
+/*pub struct ConcurrentBSTMapIterator<'a, const N: usize, V> {
+    map: &'a ConcurrentBSTMap<N,V>,
+    current_key: Option<[u8; N]>
 }
 
-pub struct ConcurrentBSTMapIterator<'a, K, V> {
-    map: &'a ConcurrentBSTMap<K,V>,
-    current_key: Option<K>
-}
-
-impl<'a, K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, K, V>{
-    type Item = (K,V);
+impl<'a, const N: usize, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, N, V>{
+    type Item = ([u8; N],V);
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.current_key{
@@ -424,18 +414,18 @@ impl<'a, K: Copy + Ord + Sub<Output = K> + Constants, V: Copy> Iterator for Conc
             }
         }
     }
-}
+}*/
 
 #[derive(Debug)]
-pub struct ConcurrentBSTSet<K>(ConcurrentBSTMap<K, ()>);
+pub struct ConcurrentBSTSet<const N: usize>(ConcurrentBSTMap<N, ()>);
 
-impl<K: Copy + Ord + Sub<Output = K> + Constants> ConcurrentBSTSet<K>{
+impl<const N: usize> ConcurrentBSTSet<N>{
 
     pub fn clear(&self){
         self.0.clear();
     }
 
-    pub fn contains_key(&self, key: K) -> bool{
+    pub fn contains_key(&self, key: [u8; N]) -> bool{
         self.0.contains_key(key)
     }
 
@@ -443,33 +433,33 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants> ConcurrentBSTSet<K>{
         self.0.depth()
     }
 
-    pub fn get_max(&self) -> Option<K>{
+    pub fn get_max(&self) -> Option<[u8; N]>{
         self.0.get_max().map(|x| x.0)
     }
 
-    pub fn get_min(&self) -> Option<K>{
+    pub fn get_min(&self) -> Option<[u8; N]>{
         self.0.get_min().map(|x| x.0)
     }
 
-    pub fn get_next(&self, key: K) -> Option<K>{
+    /*pub fn get_next(&self, key: [u8; N]) -> Option<[u8; N]>{
         self.0.get_next(key).map(|x| x.0)
-    }
+    }*/
 
-    pub fn insert(&self, key: K) -> Result<(), MaxDepthReachedError>{
-        self.0.insert_or_update(key, (), &ALWAYS_UPDATE).map(|_| ())
+    pub fn insert(&self, key: [u8; N], max_depth: u32) -> Result<(), MaxDepthReachedError>{
+        self.0.insert_or_update(key, (), &NEVER_UPDATE, max_depth).map(|_| ())
     }
 
     pub fn is_empty(&self) -> bool{
         self.0.is_empty()
     }
 
-    pub fn iter(&self) -> ConcurrentBSTMapIterator<K, ()>{
+    /*pub fn iter(&self) -> ConcurrentBSTMapIterator<N, ()>{
         self.0.iter()
-    }
+    }*/
 
-    pub fn into_iter(self) -> ConcurrentBSTMapIntoIterator<K, ()>{
+    /*pub fn into_iter(self) -> ConcurrentBSTMapIntoIterator<N, ()>{
         self.0.into_iter()
-    }
+    }*/
 
     pub fn len(&self) -> usize{
         self.0.len()
@@ -479,15 +469,11 @@ impl<K: Copy + Ord + Sub<Output = K> + Constants> ConcurrentBSTSet<K>{
         Self(ConcurrentBSTMap::new())
     }
 
-    pub fn remove(&self, key: K){
-        self.remove_if(key, &|_| true)
+    pub fn remove(&self, key: [u8; N]){
+        self.0.remove_if(key, &|_| true)
     }
 
-    pub fn remove_if(&self, key: K, should_remove: &impl Fn(&K) -> bool){
-        self.0.remove_if(key, &|x, _| should_remove(x))
-    }
-
-    pub fn retain(&self, criteria: &impl Fn(&K) -> bool){
+    /*pub fn retain(&self, criteria: &impl Fn(&[u8; N]) -> bool){
         self.0.retain(&|x, _| criteria(x))
-    }
+    }*/
 }
