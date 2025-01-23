@@ -38,7 +38,7 @@ struct ConcurrentBSTMapInternal<K, V>{
 struct ConcurrentBSTMapNode<K, V>{
     key: K,
     value: V,
-    child_keys: [Option<(K, u32, bool)>; 2]
+    child_keys: [Option<(K, bool)>; 2]
 }
 
 impl<K: Copy, V> ConcurrentBSTMapNode<K, V>{
@@ -91,20 +91,50 @@ impl<K: Copy + Ord + Hash, V: Copy> ConcurrentBSTMap<K, V>{
     
     pub fn get(&self, key: K) -> Option<V>{
         self.0.read().map(|read_lock| {
-            read_lock.list[read_lock.get_index(key)].read().unwrap().iter().find(|x| x.key == key).map(|x| x.1)
+            read_lock.list[read_lock.get_index(key)].read().unwrap().iter().find(|x| x.key == key).map(|x| x.value)
         }).unwrap()
     }
 
     pub fn get_min(&self) -> Option<(K,V)>{
-        self.0.read().map(|read_lock| {
-            loop{
-                match read_lock.list[current_key_hash].write().map(|mut write_lock| {
-            }
-        }).unwrap()
+        self.get_min_or_max(0)
     }
 
     pub fn get_max(&self) -> Option<(K,V)>{
-        
+        self.get_min_or_max(1)
+    }
+
+    fn get_min_or_max(&self, child_index: usize) -> Option<(K, V)>{
+        self.0.read().map(|read_lock| {
+
+            let mut current_key = match read_lock.root_node_key {
+                Some(root_node_key) => root_node_key,
+                None => return None
+            };
+            let mut current_key_hash = read_lock.get_index(current_key);
+            let mut current_best = None;
+
+            loop{
+                match read_lock.list[current_key_hash].read().map(|inner_read_lock| {
+                    match inner_read_lock.iter().position(|x| x.key == current_key) {
+                        Some(index) => {
+                            current_best = Some((inner_read_lock[index].key, inner_read_lock[index].value));
+                            match inner_read_lock[index].child_keys[child_index]{
+                                Some(left_key) => {
+                                    current_key = left_key.0;
+                                    current_key_hash = read_lock.get_index(current_key);
+                                    None
+                                }
+                                None => Some(current_best)
+                            }
+                        }
+                        None => Some(current_best)
+                    }
+                }).unwrap(){
+                    None => (),
+                    Some(x) => return x
+                }
+            }
+        }).unwrap()
     }
     
     pub fn get_or_closest_by_key(&self, key: K, include_key: bool) -> Option<(K,V)>{
@@ -124,7 +154,7 @@ impl<K: Copy + Ord + Hash, V: Copy> ConcurrentBSTMap<K, V>{
             
             loop{
                 match lock_guard.list[current_key_hash].write().map(|mut write_lock| {
-                    match write_lock.iter().position(|x| x.key == key) {
+                    match write_lock.iter().position(|x| x.key == current_key) {
                         Some(index) => {
                             if current_key == key{
                                 //update
@@ -230,13 +260,11 @@ impl<K: Copy + Ord + Hash, V: Copy> ConcurrentBSTMap<K, V>{
 
             loop {
                 if write_lock.list[current_key_hash].write().map(|mut inner_write_lock| {
-                    
-                    match inner_write_lock.iter().position(|x| x.key == key) {
+                    match inner_write_lock.iter().position(|x| x.key == current_key) {
                         Some(index) => {
                             if current_key == key {
                                 if should_remove(&inner_write_lock[index].value) {
                                     inner_write_lock.swap_remove(index);
-                                    
                                 }
                                 true
                             } else {
