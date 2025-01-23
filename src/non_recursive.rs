@@ -31,7 +31,7 @@ struct ConcurrentBSTMapInternal<K, V>{
     random_bytes: [u8; 32],
     no_elements: AtomicUsize,
     root_node_key: Option<K>,
-    list: Vec<RwLock<Vec<ConcurrentBSTMapNode<K, V>>>>
+    list: Vec<RwLock<Option<ConcurrentBSTMapNode<K, V>>>>
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -57,19 +57,22 @@ impl<K: Copy + Ord + Hash, V: Copy> ConcurrentBSTMapInternal<K, V>{
             random_bytes: random(),
             no_elements: AtomicUsize::new(0),
             root_node_key: None,
-            list: {
-                let mut new_vec = Vec::new();
-                for _ in 0..MIN_LIST_LENGTH {new_vec.push(RwLock::new(Vec::new()))}
-                new_vec
-            }
+            list: Vec::from([const {RwLock::new(None)}; MIN_LIST_LENGTH])
         }
     }
 
-    fn get_index(&self, key: K) -> usize{
+    fn get_indexes(&self, key: K) -> [usize; 16]{
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
         self.random_bytes.hash(&mut hasher);
-        (hasher.finish() % (self.list.len() as u64)) as usize
+        let mut to_return = [0; 16];
+        let mut index = (hasher.finish() % (self.list.len() as u64)) as usize;
+        for i in 0..16{
+            to_return[i] = index;
+            index += 1;
+            if index == self.list.len() {index = 0}
+        }
+        to_return
     }
 }
 
@@ -85,13 +88,22 @@ impl<K: Copy + Ord + Hash, V: Copy> ConcurrentBSTMap<K, V>{
     
     pub fn contains_key(&self, key: K) -> bool{
         self.0.read().map(|read_lock| {
-            read_lock.list[read_lock.get_index(key)].read().unwrap().iter().position(|x| x.key == key).is_some()
+            for i in read_lock.get_indexes(key){
+                if read_lock.list[i].read().unwrap().is_some_and(|x| x.key == key) {return true}
+            }
+            false
         }).unwrap()
     }
     
     pub fn get(&self, key: K) -> Option<V>{
         self.0.read().map(|read_lock| {
-            read_lock.list[read_lock.get_index(key)].read().unwrap().iter().find(|x| x.key == key).map(|x| x.value)
+            for i in read_lock.get_indexes(key){
+                match read_lock.list[i].read().unwrap().as_ref(){
+                    Some(x) => if x.key == key {return Some(x.value)},
+                    None => ()
+                }
+            }
+            None
         }).unwrap()
     }
 
@@ -167,8 +179,13 @@ impl<K: Copy + Ord + Hash, V: Copy> ConcurrentBSTMap<K, V>{
                                 ))
                             }
                             else{
-                                current_key = *write_lock[index].child_keys[Self::child_index(&current_key, &key)].get_or_insert(key);
-                                current_key_hash = lock_guard.get_index(current_key);
+                                match *write_lock[index].child_keys[Self::child_index(&current_key, &key)].get_or_insert((key, false)){
+                                    (_, true) => (),
+                                    (child_key, false) => {
+                                        current_key = child_key;
+                                        current_key_hash = lock_guard.get_index(current_key);
+                                    }
+                                }
                                 None
                             }
                         }
