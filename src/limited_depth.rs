@@ -107,8 +107,10 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                         }
                         ConcurrentMapInternal::List(list) => {
                             let index = Self::get_index(key, depth);
+                            let result = list[index].get_or_closest_by_key_internal(key, include_key, depth + 1, closest);
+                            
+                            
                             [
-                                list[index].get_or_closest_by_key_internal(key, include_key, depth + 1, closest),
                                 if index > 0 {list[index-1].get_or_closest_by_key_internal(key, include_key, depth + 1, closest)} else {None},
                                 if index < 3 {list[index+1].get_or_closest_by_key_internal(key, include_key, depth + 1, closest)} else {None},
                             ].iter().filter_map(|x| *x).min_by_key(|x| Self::get_abs_diff(key, x.0))
