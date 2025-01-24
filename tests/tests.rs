@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, RwLock};
 use std::time::{Duration, SystemTime};
-use concurrent_bst_map::recursive::{ConcurrentBSTMap, DEFAULT_MAX_DEPTH};
+use concurrent_bst_map::recursive::ConcurrentBSTMap;
 use concurrent_bst_map::{ALWAYS_UPDATE, NEVER_UPDATE};
 use rand::distributions::{Distribution, Standard};
 use rand::random;
@@ -39,18 +39,18 @@ fn recursion_test(){
 #[test]
 fn length_test(){
     let expected = 10000;
-    let bst = ConcurrentBSTMap::<32, u64>::new();
+    let bst = ConcurrentBSTMap::<32, u64, 256>::new();
     get_vec_of_key_values::<([u8; 32],u64)>(expected).iter()
-        .for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE, DEFAULT_MAX_DEPTH));
+        .for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE));
     assert_eq!(bst.len(), expected);
 }
 
 #[test]
 fn depth_test(){
     let expected = 10000;
-    let bst = ConcurrentBSTMap::<32, u64>::new();
+    let bst = ConcurrentBSTMap::<32, u64, 256>::new();
     get_vec_of_key_values::<([u8; 32],u64)>(expected).iter()
-        .for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE, DEFAULT_MAX_DEPTH));
+        .for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE));
     println!("{}", bst.depth());
 }
 
@@ -59,46 +59,46 @@ fn depth_test(){
 fn remove_test(){
     let expected = 10000;
     let to_insert = get_vec_of_key_values::<([u8; 32],u64)>(expected);
-    let bst = ConcurrentBSTMap::<32, u64>::new();
-    to_insert.iter().for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE, DEFAULT_MAX_DEPTH));
+    let bst = ConcurrentBSTMap::<32, u64, 256>::new();
+    to_insert.iter().for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE));
     to_insert.iter().for_each(|x| bst.remove(x.0));
     assert!(to_insert.iter().all(|x| bst.get(x.0).is_none()));
 }
 
 #[test]
 fn should_update_test() {
-    let bst = ConcurrentBSTMap::<32, u64>::new();
+    let bst = ConcurrentBSTMap::<32, u64, 256>::new();
     let (key, mut value) = ([0; 32], 0);
-    assert!(bst.insert_or_update(key, value, &should_update, DEFAULT_MAX_DEPTH).is_ok_and(|x| x));
+    assert!(bst.insert_or_update(key, value, &should_update).is_ok_and(|x| x));
     value += 1;
-    assert!(bst.insert_or_update(key, value, &should_update, DEFAULT_MAX_DEPTH).is_ok_and(|x| x));
+    assert!(bst.insert_or_update(key, value, &should_update).is_ok_and(|x| x));
     value -= 1;
-    assert!(!bst.insert_or_update(key, value, &should_update, DEFAULT_MAX_DEPTH).is_ok_and(|x| x));
+    assert!(!bst.insert_or_update(key, value, &should_update).is_ok_and(|x| x));
 }
 
 #[test]
 fn insert_and_get_test() {
-    let bst = ConcurrentBSTMap::<32, u64>::new();
-    _ = bst.insert_or_update([0; 32], 1, &ALWAYS_UPDATE, DEFAULT_MAX_DEPTH);
+    let bst = ConcurrentBSTMap::<32, u64, 256>::new();
+    _ = bst.insert_or_update([0; 32], 1, &ALWAYS_UPDATE);
     assert!(bst.get([0;32]).is_some_and(|x| x == 1));
 }
 
 #[test]
 fn bench_insert_or_update_if(){
-    let bst = ConcurrentBSTMap::<32, u64>::new();
+    let bst = ConcurrentBSTMap::<32, u64, 256>::new();
     let (key, mut value) = ([0; 32], 0);
     let mut true_count = 0;
     let total = 1000000;
     let start_time = SystemTime::now();
     for _ in 0..total{
-        if bst.insert_or_update(key, value, &should_update, DEFAULT_MAX_DEPTH).is_ok_and(|x| x) {true_count += 1};
+        if bst.insert_or_update(key, value, &should_update).is_ok_and(|x| x) {true_count += 1};
         value += 1;
     }
     println!("{}", total as f64 / SystemTime::now().duration_since(start_time).unwrap().as_secs_f64());
     assert_eq!(true_count, total);
 }
 
-static GLOBAL_BST: ConcurrentBSTMap<32, u64> = ConcurrentBSTMap::new();
+static GLOBAL_BST: ConcurrentBSTMap<32, u64, 256> = ConcurrentBSTMap::new();
 
 static TRUE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
@@ -123,7 +123,7 @@ fn bench_multi_thread_insert_or_update_if_and_remove(){
                     USER_LIST.read().map(|read_lock| {
                         for i in start_index..(start_index+TOTAL_PER_THREAD) {
                             let (key, value) = read_lock[i];
-                            if GLOBAL_BST.insert_or_update(key, value, &NEVER_UPDATE, DEFAULT_MAX_DEPTH).is_ok_and(|x| x){
+                            if GLOBAL_BST.insert_or_update(key, value, &NEVER_UPDATE).is_ok_and(|x| x){
                                 TRUE_COUNT.fetch_add(1, Ordering::Relaxed);
                             }
                         }
@@ -165,6 +165,6 @@ fn bench_multi_thread_insert_or_update_if_and_remove(){
                 }
             }
             println!("{}", (NO_THREADS*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
-            assert!(GLOBAL_BST.len() == 0);
+            assert_eq!(GLOBAL_BST.len(), 0);
         });
 }

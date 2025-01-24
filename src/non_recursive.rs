@@ -38,7 +38,9 @@ struct ConcurrentBSTMapInternal<K, V>{
 struct ConcurrentBSTMapNode<K, V>{
     key: K,
     value: V,
-    child_keys: [Option<(K, bool, u32)>; 2]
+    write_lock: bool,
+    readers: u32,
+    child_keys: [Option<K>; 2]
 }
 
 impl<K: Copy, V> ConcurrentBSTMapNode<K, V>{
@@ -46,6 +48,8 @@ impl<K: Copy, V> ConcurrentBSTMapNode<K, V>{
         Self{
             key,
             value,
+            write_lock: false,
+            readers: 0,
             child_keys: [None; 2]
         }
     }
@@ -60,12 +64,16 @@ impl<K: Copy + Ord + Hash, V: Copy> ConcurrentBSTMapInternal<K, V>{
             list: Vec::from([const {Mutex::new(Vec::new())}; MIN_LIST_LENGTH])
         }
     }
-
+    
     fn get_index(&self, key: K) -> usize{
+        self.get_index_with_max(key, self.list.len())
+    }
+    
+    fn get_index_with_max(&self, key: K, max_index: usize) -> usize{
         let mut hasher = DefaultHasher::new();
         key.hash(&mut hasher);
         self.random_bytes.hash(&mut hasher);
-        (hasher.finish() % (self.list.len() as u64)) as usize
+        (hasher.finish() % (max_index as u64)) as usize
     }
 }
 
@@ -117,41 +125,38 @@ impl<K: Copy + Ord + Hash, V: Copy> ConcurrentBSTMap<K, V>{
         
         let inner_function = |root_node_key, lock_guard: LockGuard<K, V>| {
 
-            let mut keys_list = vec![root_node_key];
-            let mut current_key_hash = lock_guard.get_index(keys_list[keys_list.len()-1]);
+            let mut keys_list = vec![(root_node_key,lock_guard.get_index(root_node_key))];
 
-            let current_key = || keys_list[keys_list.len()-1];
+            let mut current_key;
+            let mut current_key_hash;
             
             loop{
-                match lock_guard.list[current_key_hash].lock().map(|mut write_lock| {
-                    match write_lock.iter().position(|x| x.key == current_key()) {
+                (current_key, current_key_hash) = keys_list[keys_list.len() - 1];
+                match lock_guard.list[current_key_hash].lock().map(|mut mutex_lock| {
+                    match mutex_lock.iter().position(|x| x.key == current_key) {
                         Some(index) => {
-                            if current_key() == key{
+                            if mutex_lock[index].write_lock {None}
+                            else if current_key == key{
                                 //update
                                 Some((false,
-                                    if should_update(&write_lock[index].value, &value){
-                                        write_lock[index].value = value;
+                                    if should_update(&mutex_lock[index].value, &value){
+                                        mutex_lock[index].value = value;
                                         true
                                     }
                                     else {false},
                                 ))
                             }
                             else{
-                                match write_lock[index].child_keys[Self::child_index(&current_key(), &key)].get_or_insert((key, false, 0)){
-                                    (_, true, _) => (),
-                                    (child_key, false, readers) => {
-                                        keys_list.push(*child_key);
-                                        current_key_hash = lock_guard.get_index(current_key);
-                                        *readers += 1;
-                                    }
-                                }
+                                let child_key = mutex_lock[index].child_keys[Self::child_index(&current_key, &key)].get_or_insert(key);
+                                keys_list.push((*child_key,lock_guard.get_index(*child_key)));
+                                mutex_lock[index].readers += 1;
                                 None
                             }
                         }
                         None => {
                             if current_key == key {
                                 //insert
-                                write_lock.push(ConcurrentBSTMapNode::new(key, value));
+                                mutex_lock.push(ConcurrentBSTMapNode::new(key, value));
                                 Some((true, lock_guard.no_elements.fetch_add(1, Ordering::Relaxed) >= lock_guard.list.len()))
                             }
                             else {None} //wait for it to be created by another insert
@@ -159,7 +164,17 @@ impl<K: Copy + Ord + Hash, V: Copy> ConcurrentBSTMap<K, V>{
                     }
                 }).unwrap(){
                     None => (),
-                    Some(result) => return result
+                    Some(result) => { 
+                        for (k, h) in keys_list.into_iter().rev(){
+                            lock_guard.list[h].lock().map(|mut mutex_lock| {
+                                match mutex_lock.iter().position(|x| x.key == k) {
+                                    Some(index) => mutex_lock[index].readers -= 1,
+                                    None => ()
+                                }
+                            }).unwrap();
+                        }
+                        return result
+                    }
                 }
             }
         };
@@ -227,76 +242,87 @@ impl<K: Copy + Ord + Hash, V: Copy> ConcurrentBSTMap<K, V>{
     pub fn remove_if(&self, key: K, should_remove: impl Fn(&V) -> bool){
         //need to find parent node
         //then find replacement for node and set the parent node child key as the new node key
-        self.0.write().map(|mut write_lock| {
-            let mut current_key = match write_lock.root_node_key {
-                Some(root_node_key) => root_node_key,
-                None => return
-            };
-            let mut current_key_hash = write_lock.get_index(current_key);
 
-            loop {
-                if write_lock.list[current_key_hash].write().map(|mut inner_write_lock| {
-                    match inner_write_lock.iter().position(|x| x.key == current_key) {
+        let inner_function = |root_node_key, lock_guard: LockGuard<K, V>| {
+
+            let mut keys_list = vec![(root_node_key,lock_guard.get_index(root_node_key))];
+
+            let mut current_key;
+            let mut current_key_hash;
+
+            loop{
+                (current_key, current_key_hash) = keys_list[keys_list.len() - 1];
+                if lock_guard.list[current_key_hash].lock().map(|mut mutex_lock| {
+                    match mutex_lock.iter().position(|x| x.key == current_key) {
                         Some(index) => {
-                            if current_key == key {
-                                if should_remove(&inner_write_lock[index].value) {
-                                    inner_write_lock.swap_remove(index);
-                                }
-                                true
-                            } else {
-                                match inner_write_lock[index].child_keys[Self::child_index(&current_key, &key)]{
-                                    Some(x) => {
-                                        current_key = x;
-                                        current_key_hash = write_lock.get_index(current_key);
-                                        false
-                                    },
-                                    None => true
-                                }
+                            if mutex_lock[index].write_lock {None}
+                            else if current_key == key{
+                                
+                            }
+                            else{
+                                let child_key = mutex_lock[index].child_keys[Self::child_index(&current_key, &key)].get_or_insert(key);
+                                keys_list.push((*child_key,lock_guard.get_index(*child_key)));
+                                mutex_lock[index].readers += 1;
+                                false
                             }
                         }
                         None => {
                             if current_key == key {
-                                //insert
-                                inner_write_lock.push(ConcurrentBSTMapNode::new(key, value));
-                                Some((true, lock_guard.no_elements.fetch_add(1, Ordering::Relaxed) >= lock_guard.list.len()))
-                            } else { None } //wait for it to be created by another insert
+                                
+                            }
+                            else {None} //wait for it to be created by another insert
                         }
                     }
-                }).unwrap() {return}
-            }
-        }).unwrap();
-        /*if self.inner.read().map(|read_lock| {
-            read_lock.list[get_index(key, read_lock.list.len())].write().map(|mut write_lock| {
-                match write_lock.iter().position(|x| x.0 == key){
-                    Some(index) => {
-                        if should_remove(&write_lock[index].1) {
-                            write_lock.swap_remove(index);
-                            (read_lock.no_elements.fetch_sub(1, Ordering::Relaxed) < (read_lock.list.len() / 2)) && (read_lock.list.len() > MIN_LIST_LENGTH)
-                        }
-                        else {false}
+                }).unwrap(){
+                    for (k, h) in keys_list.into_iter().rev(){
+                        lock_guard.list[h].lock().map(|mut mutex_lock| {
+                            match mutex_lock.iter().position(|x| x.key == k) {
+                                Some(index) => mutex_lock[index].readers -= 1,
+                                None => ()
+                            }
+                        }).unwrap();
                     }
-                    None => false
+                    return
                 }
-            }).unwrap()
-        }).unwrap(){
-            self.inner.write().map(|mut write_lock| {
+            }
+        };
+
+        if loop{
+            match self.0.read().map(|read_lock| {
+                
+                read_lock.root_node_key.map(|x| inner_function(x, LockGuard::Read(read_lock)))
+            }).unwrap(){
+                Some(result) => break result,
+                None => ()
+            }
+            match self.0.write().map(|mut write_lock| {
+                match write_lock.root_node_key{
+                    Some(_) => None,
+                    None => Some(inner_function(*write_lock.root_node_key.insert(key), LockGuard::Write(write_lock)))
+                }
+            }).unwrap(){
+                Some(result) => break result,
+                None => (),
+            }
+        } {
+            self.0.write().map(|mut write_lock| {
                 let old_list_length = write_lock.list.len();
                 let no_elements = write_lock.no_elements.load(Ordering::Relaxed);
                 let mut new_list_length = old_list_length;
-                while (new_list_length > MIN_LIST_LENGTH) && (no_elements < (new_list_length / 2)) {new_list_length /= 2}
-                if new_list_length < old_list_length{
-                    for i in 0..old_list_length{
-                        for entry in write_lock.list[i].write().map(|mut inner_lock| {
-                            let old_entries = inner_lock.clone();
-                            *inner_lock = Vec::new();
+                while (new_list_length > MIN_LIST_LENGTH) && (no_elements < (new_list_length / 2)) { new_list_length /= 2 }
+                if new_list_length < old_list_length {
+                    for i in 0..old_list_length {
+                        for entry in write_lock.list[i].lock().map(|mut mutex_lock| {
+                            let old_entries = mutex_lock.clone();
+                            *mutex_lock = Vec::new();
                             old_entries
-                        }).unwrap(){
-                            write_lock.list[get_index(entry.0, new_list_length)].write().unwrap().push(entry)
+                        }).unwrap() {
+                            write_lock.list[write_lock.get_index_with_max(entry.key, new_list_length)].lock().unwrap().push(entry)
                         }
                     }
-                    for i in (new_list_length..old_list_length).rev() {_ = write_lock.list.swap_remove(i)}
+                    for i in (new_list_length..old_list_length).rev() { _ = write_lock.list.swap_remove(i) }
                 }
             }).unwrap();
-        }*/
+        }
     }
 }

@@ -1,8 +1,5 @@
 use std::fmt;
 use std::sync::RwLock;
-use crate::{ALWAYS_UPDATE, NEVER_UPDATE};
-
-pub const DEFAULT_MAX_DEPTH: u32 = 500;
 
 #[derive(Debug, Clone, Copy)]
 pub struct MaxDepthReachedError;
@@ -28,7 +25,7 @@ impl<const N: usize, V: Copy, const MAX_DEPTH: u16> ConcurrentBSTInternal<N, V, 
         Self {
             key,
             value,
-            child_nodes: [const { ConcurrentBSTMap::new() }; 2]
+            child_nodes: [const {ConcurrentBSTMap::new()}; 2]
         }
     }
 }
@@ -37,7 +34,7 @@ impl<const N: usize, V: Copy, const MAX_DEPTH: u16> ConcurrentBSTInternal<N, V, 
 pub struct ConcurrentBSTMap<const N: usize, V, const MAX_DEPTH: u16>(RwLock<Option<Box<ConcurrentBSTInternal<N, V, MAX_DEPTH>>>>);
 
 impl<const N: usize, V: Copy, const MAX_DEPTH: u16> ConcurrentBSTMap<N, V, MAX_DEPTH>{
-
+    
     pub fn clear(&self){
         *self.0.write().unwrap() = None;
     }
@@ -53,20 +50,6 @@ impl<const N: usize, V: Copy, const MAX_DEPTH: u16> ConcurrentBSTMap<N, V, MAX_D
             }
         }).unwrap()
     }
-
-    /*pub fn copy(&self, rand_index_func: impl Fn(usize) -> usize) -> Self{
-        let mut all_key_values = self.get_all_key_values();
-        loop{
-            let mut error = false;
-            let new_bst = ConcurrentBSTMap::new();
-            let (mut key, mut value);
-            while (all_key_values.len() > 0) && !error{
-                (key, value) = all_key_values.swap_remove(rand_index_func(all_key_values.len()));
-                if new_bst.insert_or_update(key, value, &NEVER_UPDATE).is_err() {error = true}
-            }
-            if !error {return new_bst}
-        }
-    }*/
 
     pub fn depth(&self) -> u32{
         self.0.read().map(|read_lock| {
@@ -113,7 +96,7 @@ impl<const N: usize, V: Copy, const MAX_DEPTH: u16> ConcurrentBSTMap<N, V, MAX_D
         self.get_min_or_max(true)
     }
 
-    /*fn get_or_closest_by_key_internal(&self, key: [u8; N], closest: ([u8; N], V), include_key: bool, all_left: bool, all_right: bool) -> Option<(([u8; N], V), bool, bool)>{
+    fn get_or_closest_by_key_internal(&self, key: [u8; N], closest: ([u8; N], V), include_key: bool, all_left: bool, all_right: bool) -> Option<(([u8; N], V), bool, bool)>{
         self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
@@ -136,17 +119,10 @@ impl<const N: usize, V: Copy, const MAX_DEPTH: u16> ConcurrentBSTMap<N, V, MAX_D
                 }
             }
         }).unwrap()
-    }*/
+    }
 
-    /*pub fn get_or_closest_by_key(&self, key: [u8; N], include_key: bool) -> Option<([u8; N], V)>{
-
-        let get_loop_around_diff = |item_1, item_2| {
-            let abs_diff = Self::get_abs_diff(item_1, item_2);
-            //should never be 0
-            if abs_diff == K::ZERO {K::ZERO}
-            else {K::MAX - (abs_diff - K::ONE)}
-        };
-
+    pub fn get_or_closest_by_key(&self, key: [u8; N], include_key: bool) -> Option<([u8; N], V)>{
+        
         match self.0.read().map(|read_lock| {
             match &*read_lock {
                 None => None,
@@ -173,29 +149,14 @@ impl<const N: usize, V: Copy, const MAX_DEPTH: u16> ConcurrentBSTMap<N, V, MAX_D
                         match if is_min {self.get_max()} else if is_max {self.get_min()} else {None}{
                             None => key_value,
                             Some(result) => {
-                                if get_loop_around_diff(key, result.0) < get_loop_around_diff(key, key_value.0) {result} else {key_value}
+                                if Self::get_abs_diff(key, result.0) < Self::get_abs_diff(key, key_value.0) {result} else {key_value}
                             }
                         }
                     }
                 )
             }
         }
-    }*/
-
-    /*pub fn get_next(&self, key: [u8; N]) -> Option<([u8; N], V)>{
-        self.0.read().map(|read_lock| {
-            match &*read_lock {
-                None => None,
-                Some(node) => {
-                    [
-                        if node.key > key {Some((node.key, node.value))} else {None},
-                        node.child_nodes[Self::get_index(key, node.key)].get_next(key)
-                    ].iter().filter_map(|x| *x)
-                        .min_by_key(|x| x.0 - key)
-                }
-            }
-        }).unwrap()
-    }*/
+    }
 
     pub fn insert_or_update(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool) -> Result<bool, MaxDepthReachedError>{
         self.insert_or_update_internal(key, value, should_update, MAX_DEPTH)
@@ -255,13 +216,6 @@ impl<const N: usize, V: Copy, const MAX_DEPTH: u16> ConcurrentBSTMap<N, V, MAX_D
         self.len() == 0
     }
 
-    /*pub fn iter(&self) -> ConcurrentBSTMapIterator<N, V>{
-        ConcurrentBSTMapIterator{
-            map: self,
-            current_key: self.get_min().map(|x| x.0)
-        }
-    }*/
-
     pub fn len(&self) -> usize{
         self.0.read().map(|read_lock| {
             match &*read_lock{
@@ -316,17 +270,36 @@ impl<const N: usize, V: Copy, const MAX_DEPTH: u16> ConcurrentBSTMap<N, V, MAX_D
         }
     }
 
-    /*pub fn retain(&self, criteria: &impl Fn(&[u8; N], &V) -> bool){
-        self.iter().for_each(|(key, value)| {
-            if criteria(&key, &value){
-                //delete
+    fn get_abs_diff(item_1: [u8; N], item_2: [u8; N]) -> [u8; N]{
+        let inner_function = |larger: [u8; N], smaller: [u8; N]| {
+            let mut result = [0; N];
+            let mut borrow = 0;
+            for i in (0..N).rev() {
+                let diff = (larger[i] as i16) - (smaller[i] as i16) - borrow;
+                if diff < 0 {
+                    borrow = 1;
+                    result[i] = (diff + 256) as u8;
+                } else {
+                    borrow = 0;
+                    result[i] = diff as u8;
+                }
             }
-        });
-    }*/
-
-    /*fn get_abs_diff(item_1: [u8; N], item_2: [u8; N]) -> [u8; N]{
-        if item_2 > item_1 {item_2 - item_1} else {item_1 - item_2}
-    }*/
+            result
+        };
+        let mut result = if item_1 > item_2 {inner_function(item_1, item_2)} else {inner_function(item_2, item_1)};
+        if (result[0] >> 7) == 1 {
+            //other way around is shorter or equal
+            //minus one
+            let mut index = N-1;
+            while result[index] == 0 {
+                result[index] = u8::MAX;
+                index -= 1;
+            }
+            result[index] -= 1;
+            inner_function([u8::MAX; N], result)
+        }
+        else {result}
+    }
 
     fn get_index(target: [u8; N], current: [u8; N]) -> usize{
         if target < current {0} else {1}
@@ -367,59 +340,6 @@ impl<const N: usize, V: Copy, const MAX_DEPTH: u16> ConcurrentBSTMap<N, V, MAX_D
     }
 }
 
-/*mpl<const N: usize, V: Copy> IntoIterator for ConcurrentBSTMap<N, V>{
-    type Item = ([u8; N], V);
-
-    type IntoIter = ConcurrentBSTMapIntoIterator<N, V>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        ConcurrentBSTMapIntoIterator{
-            current_key: self.get_min().map(|x| x.0),
-            map: self
-        }
-    }
-}
-
-pub struct ConcurrentBSTMapIntoIterator<const N: usize, V> {
-    map: ConcurrentBSTMap<N,V>,
-    current_key: Option<[u8; N]>
-}
-
-impl<const N: usize, V: Copy> Iterator for ConcurrentBSTMapIntoIterator<N, V>{
-    type Item = ([u8; N],V);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.current_key{
-            None => None,
-            Some(current_key) => {
-                let next_key_value = self.map.get_next(current_key);
-                self.current_key = next_key_value.map(|x| x.0);
-                next_key_value
-            }
-        }
-    }
-}*/
-
-/*pub struct ConcurrentBSTMapIterator<'a, const N: usize, V> {
-    map: &'a ConcurrentBSTMap<N,V>,
-    current_key: Option<[u8; N]>
-}
-
-impl<'a, const N: usize, V: Copy> Iterator for ConcurrentBSTMapIterator<'a, N, V>{
-    type Item = ([u8; N],V);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.current_key{
-            None => None,
-            Some(current_key) => {
-                let next_key_value = self.map.get_next(current_key);
-                self.current_key = next_key_value.map(|x| x.0);
-                next_key_value
-            }
-        }
-    }
-}*/
-
 #[derive(Debug)]
 pub struct ConcurrentBSTSet<const N: usize, const MAX_DEPTH: u16>(ConcurrentBSTMap<N, (), MAX_DEPTH>);
 
@@ -445,25 +365,13 @@ impl<const N: usize, const MAX_DEPTH: u16> ConcurrentBSTSet<N, MAX_DEPTH>{
         self.0.get_min().map(|x| x.0)
     }
 
-    /*pub fn get_next(&self, key: [u8; N]) -> Option<[u8; N]>{
-        self.0.get_next(key).map(|x| x.0)
-    }*/
-
     pub fn insert(&self, key: [u8; N]) -> Result<(), MaxDepthReachedError>{
-        self.0.insert_or_update(key, (), &NEVER_UPDATE).map(|_| ())
+        self.0.insert_or_update(key, (), &crate::NEVER_UPDATE).map(|_| ())
     }
 
     pub fn is_empty(&self) -> bool{
         self.0.is_empty()
     }
-
-    /*pub fn iter(&self) -> ConcurrentBSTMapIterator<N, ()>{
-        self.0.iter()
-    }*/
-
-    /*pub fn into_iter(self) -> ConcurrentBSTMapIntoIterator<N, ()>{
-        self.0.into_iter()
-    }*/
 
     pub fn len(&self) -> usize{
         self.0.len()
@@ -476,8 +384,4 @@ impl<const N: usize, const MAX_DEPTH: u16> ConcurrentBSTSet<N, MAX_DEPTH>{
     pub fn remove(&self, key: [u8; N]){
         self.0.remove_if(key, &|_| true)
     }
-
-    /*pub fn retain(&self, criteria: &impl Fn(&[u8; N]) -> bool){
-        self.0.retain(&|x, _| criteria(x))
-    }*/
 }
