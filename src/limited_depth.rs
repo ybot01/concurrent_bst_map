@@ -12,12 +12,40 @@ enum ConcurrentMapInternal<const N: usize, V>{
 impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     
     const fn get_index(key: [u8; N], depth: usize) -> usize{
-        (match depth % 4{
+         (match depth % 4{
             0 => (key[depth/4] & 0b11000000) >> 6,
             1 => (key[depth/4] & 0b00110000) >> 4,
             2 => (key[depth/4] & 0b00001100) >> 2,
             _ => key[depth/4] & 0b00000011
         }) as usize
+    }
+    
+    pub fn is_empty(&self) -> bool{
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                None => true,
+                Some(inner) => {
+                    match inner.as_ref(){
+                        ConcurrentMapInternal::Item(_,_) => false,
+                        ConcurrentMapInternal::List(list) => list.iter().all(|x| x.is_empty())
+                    }
+                }
+            }
+        }).unwrap()
+    }
+    
+    pub fn depth(&self) -> usize{
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                None => 0,
+                Some(inner) => {
+                    match inner.as_ref(){
+                        ConcurrentMapInternal::Item(_,_) => 1,
+                        ConcurrentMapInternal::List(list) => 1 + list.iter().map(|x| x.depth()).max().unwrap()
+                    }
+                }
+            }
+        }).unwrap()
     }
     
     pub fn len(&self) -> usize{
@@ -108,11 +136,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         }).unwrap()
     }
 
-    pub fn insert_or_update(&self, key: [u8; N], value: V) -> bool{
-        self.insert_or_update_if(key, value, &|_,_| true)
-    }
-    
-    pub fn insert_or_update_if(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool) -> bool{
+    pub fn insert_or_update(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool) -> bool{
         self.insert_or_update_if_internal(key, value, should_update, 0)
     }
 
