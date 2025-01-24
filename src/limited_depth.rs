@@ -19,7 +19,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
             _ => key[depth/4] & 0b00000011
         }) as usize
     }
-    
+
     pub fn is_empty(&self) -> bool{
         self.0.read().map(|read_lock| {
             match &*read_lock{
@@ -33,7 +33,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
             }
         }).unwrap()
     }
-    
+
     pub fn depth(&self) -> usize{
         self.0.read().map(|read_lock| {
             match &*read_lock{
@@ -47,7 +47,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
             }
         }).unwrap()
     }
-    
+
     pub fn len(&self) -> usize{
         self.0.read().map(|read_lock| {
             match &*read_lock{
@@ -89,10 +89,10 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
     
     pub fn get_or_closest_by_key(&self, key: [u8; N], include_key: bool) -> Option<([u8; N], V)>{
-        self.get_or_closest_by_key_internal(key, include_key, 0, None)
+        self.get_or_closest_by_key_internal(key, include_key, 0, None).map(|x| x.0)
     }
 
-    fn get_or_closest_by_key_internal(&self, key: [u8; N], include_key: bool, depth: usize, closest: Option<([u8; N], V)>) -> Option<([u8; N], V)>{
+    fn get_or_closest_by_key_internal(&self, key: [u8; N], include_key: bool, depth: usize, closest: Option<([u8; N], V)>) -> Option<(([u8; N], V), bool, bool)>{
         //go down to where key would be
         //if key is there and include key is true, return
         //if above is false then go up and down the right hand side of left index in list and left hand side of right index
@@ -108,8 +108,9 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                         ConcurrentMapInternal::List(list) => {
                             let index = Self::get_index(key, depth);
                             let result = list[index].get_or_closest_by_key_internal(key, include_key, depth + 1, closest);
-                            
-                            
+                            match 
+                            //when index is some then check if 
+
                             [
                                 if index > 0 {list[index-1].get_or_closest_by_key_internal(key, include_key, depth + 1, closest)} else {None},
                                 if index < 3 {list[index+1].get_or_closest_by_key_internal(key, include_key, depth + 1, closest)} else {None},
