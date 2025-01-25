@@ -128,7 +128,7 @@ mod limited_depth_tests{
                 println!("{}", (NO_THREADS*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
                 assert_eq!(TRUE_COUNT.load(Ordering::Relaxed), NO_THREADS*TOTAL_PER_THREAD);
 
-                /*threads = Vec::new();
+                threads = Vec::new();
                 for i in 0..NO_THREADS{
                     threads.push(tokio::spawn(async move{
                         let start_index = TOTAL_PER_THREAD * i;
@@ -150,7 +150,7 @@ mod limited_depth_tests{
                     }
                 }
                 println!("{}", (NO_THREADS*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
-                assert_eq!(GLOBAL_BST.len(), 0);*/
+                assert_eq!(GLOBAL_BST.len(), 0);
             });
     }
 }
