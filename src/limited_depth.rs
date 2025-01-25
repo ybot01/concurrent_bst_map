@@ -126,33 +126,25 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         let inner_function = |item_1_inner: [u8; N], item_2_inner: [u8; N]| {
             let mut result = [0; N];
             let mut borrow = 0;
-            let item_1_bigger = item_1_inner > item_2_inner;
-            let mut diff;
             for i in (0..N).rev() {
-                diff = (if item_1_bigger {(item_1_inner[i] as i16) - (item_2_inner[i] as i16)} else {(item_2_inner[i] as i16) - (item_1_inner[i] as i16)}) - borrow;
-                if diff < 0 {
-                    borrow = 1;
-                    result[i] = (diff + 256) as u8;
-                } else {
+                if item_1_inner[i] > item_2_inner[i]{
+                    result[i] = item_1_inner[i] - item_2_inner[i] - borrow;
                     borrow = 0;
-                    result[i] = diff as u8;
+                }
+                else if item_1_inner[i] == item_2_inner[i]{
+                    if borrow == 1 {result[i] = u8::MAX}
+                    else {result[i] = 0}
+                }
+                else{
+                    result[i] = u8::MAX - (item_2_inner[i] - item_1_inner[i]) + 1 - borrow;
+                    borrow = 1;
                 }
             }
             result
         };
-        let mut result = inner_function(item_1, item_2);
-        if (result[0] >> 7) == 1 {
-            //other way around is shorter or equal
-            //minus one
-            let mut index = N-1;
-            while result[index] == 0 {
-                result[index] = u8::MAX;
-                index -= 1;
-            }
-            result[index] -= 1;
-            inner_function([u8::MAX; N], result)
-        }
-        else {result}
+        let dist = inner_function(item_1, item_2);
+        if (dist[0] >> 7) == 0 {return dist}
+        else {return inner_function(item_2, item_1)}
     }
     
     pub fn get_min(&self) -> Option<([u8; N], V)>{
