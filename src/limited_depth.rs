@@ -13,10 +13,6 @@ impl<const N: usize, V: Copy> ConcurrentMapInternal<N, V> {
     fn new_item(key: [u8; N], value: V) -> Self{
         Self::Item(Box::new((key, value)))
     }
-    
-    fn new_empty_list() -> Self{
-        Self::List(Box::new([const {ConcurrentMap::new()}; 4]))
-    }
 }
 
 impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
@@ -190,11 +186,15 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         }).unwrap()
     }
 
-    pub fn insert_or_update(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool) -> bool{
-        self.insert_or_update_internal(key, value, should_update, 0)
+    pub fn insert_or_update(&self, key: [u8; N], value: V) -> bool{
+        self.insert_or_update_if(key, value, &|_,_| true)
+    }
+    
+    pub fn insert_or_update_if(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool) -> bool{
+        self.insert_or_update_if_internal(key, value, should_update, 0)
     }
 
-    fn insert_or_update_internal(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool, depth: usize) -> bool{
+    fn insert_or_update_if_internal(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool, depth: usize) -> bool{
         loop{
             match self.0.read().map(|read_lock| {
                 match &*read_lock{
@@ -202,7 +202,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                     Some(inner) => {
                         match inner{
                             ConcurrentMapInternal::Item(_) => None, //change to write_lock
-                            ConcurrentMapInternal::List(list) => Some(list[Self::get_index(key, depth)].insert_or_update_internal(key, value, should_update, depth + 1))
+                            ConcurrentMapInternal::List(list) => Some(list[Self::get_index(key, depth)].insert_or_update_if_internal(key, value, should_update, depth + 1))
                         }
                     }
                 }
@@ -262,9 +262,9 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
 
     pub fn remove(&self, key: [u8; N]){
-        self.remove_if(key, &|_| true)
+        self.remove_if(key, &|_| true);
     }
-
+    
     pub fn remove_if(&self, key: [u8; N], should_remove: &impl Fn(&V) -> bool){
         self.remove_if_internal(key, should_remove, 0);
     }

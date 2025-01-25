@@ -25,7 +25,7 @@ mod limited_depth_tests{
         let expected = 10000;
         let bst = ConcurrentMap::<32, u64>::new();
         get_vec_of_key_values::<([u8; 32],u64)>(expected).iter()
-            .for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE));
+            .for_each(|x| _ = bst.insert_or_update(x.0, x.1));
         assert_eq!(bst.len(), expected);
     }
 
@@ -33,9 +33,9 @@ mod limited_depth_tests{
     fn depth_test(){
         let bst = ConcurrentMap::<32, u64>::new();
         let mut array = [0;32];
-        bst.insert_or_update(array,0, &ALWAYS_UPDATE);
+        bst.insert_or_update(array,0);
         array[array.len()-1] = 1;
-        bst.insert_or_update(array, 0, &ALWAYS_UPDATE);
+        bst.insert_or_update(array, 0);
         println!("{}", bst.depth());
     }
 
@@ -45,7 +45,7 @@ mod limited_depth_tests{
         let expected = 10000;
         let to_insert = get_vec_of_key_values::<([u8; 32],u64)>(expected);
         let bst = ConcurrentMap::<32, u64>::new();
-        to_insert.iter().for_each(|x| _ = bst.insert_or_update(x.0, x.1, &ALWAYS_UPDATE));
+        to_insert.iter().for_each(|x| _ = bst.insert_or_update(x.0, x.1));
         to_insert.iter().for_each(|x| bst.remove(x.0));
         assert!(to_insert.iter().all(|x| bst.get(x.0).is_none()));
     }
@@ -54,17 +54,17 @@ mod limited_depth_tests{
     fn should_update_test() {
         let bst = ConcurrentMap::<32, u64>::new();
         let (key, mut value) = ([0; 32], 0);
-        assert!(bst.insert_or_update(key, value, &should_update));
+        assert!(bst.insert_or_update_if(key, value, &should_update));
         value += 1;
-        assert!(bst.insert_or_update(key, value, &should_update));
+        assert!(bst.insert_or_update_if(key, value, &should_update));
         value -= 1;
-        assert!(!bst.insert_or_update(key, value, &should_update));
+        assert!(!bst.insert_or_update_if(key, value, &should_update));
     }
 
     #[test]
     fn insert_and_get_test() {
         let bst = ConcurrentMap::<32, u64>::new();
-        _ = bst.insert_or_update([0; 32], 1, &ALWAYS_UPDATE);
+        _ = bst.insert_or_update([0; 32], 1);
         assert!(bst.get([0;32]).is_some_and(|x| x == 1));
     }
 
@@ -76,7 +76,7 @@ mod limited_depth_tests{
         let total = 1000000;
         let start_time = SystemTime::now();
         for _ in 0..total{
-            if bst.insert_or_update(key, value, &should_update) {true_count += 1};
+            if bst.insert_or_update_if(key, value, &should_update) {true_count += 1};
             value += 1;
         }
         println!("{}", total as f64 / SystemTime::now().duration_since(start_time).unwrap().as_secs_f64());
@@ -108,7 +108,7 @@ mod limited_depth_tests{
                         USER_LIST.read().map(|read_lock| {
                             for i in start_index..(start_index+TOTAL_PER_THREAD) {
                                 let (key, value) = read_lock[i];
-                                if GLOBAL_BST.insert_or_update(key, value, &NEVER_UPDATE){
+                                if GLOBAL_BST.insert_or_update(key, value){
                                     TRUE_COUNT.fetch_add(1, Ordering::Relaxed);
                                 }
                             }
