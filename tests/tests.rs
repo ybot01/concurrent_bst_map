@@ -1,7 +1,6 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, RwLock};
 use std::time::{Duration, SystemTime};
-use concurrent_bst_map::{ALWAYS_UPDATE, NEVER_UPDATE};
 use rand::distributions::{Distribution, Standard};
 use rand::random;
 use tokio::task::JoinHandle;
@@ -17,7 +16,7 @@ fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where Standard: Distributio
 }
 
 mod limited_depth_tests{
-    use concurrent_bst_map::limited_depth::ConcurrentMap;
+    use concurrent_map::map::ConcurrentMap;
     use super::*;
 
     #[test]
@@ -156,7 +155,8 @@ mod limited_depth_tests{
 }
 
 mod recursion_tests{
-    use concurrent_bst_map::recursive::ConcurrentBSTMap;
+    use concurrent_map::{ALWAYS_UPDATE, NEVER_UPDATE};
+    use concurrent_map::bst_map::ConcurrentBSTMap;
     use super::*;
     /*
     #[test]

@@ -1,5 +1,5 @@
 [package]
-name = "concurrent_bst_map"
+name = "concurrent_map"
 version = "0.1.0"
 edition = "2021"
 
