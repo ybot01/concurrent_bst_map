@@ -122,6 +122,12 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         }).unwrap()
     }
 
+    const HALF_POINT: [u8; N] = {
+        let mut array = [0; N];
+        array[0] = 1;
+        array
+    };
+
     fn get_abs_diff(item_1: [u8; N], item_2: [u8; N]) -> [u8; N]{
         let inner_function = |item_1_inner: [u8; N], item_2_inner: [u8; N]| {
             let mut result = [0; N];
@@ -142,9 +148,8 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
             }
             result
         };
-        let dist = inner_function(item_1, item_2);
-        if (dist[0] >> 7) == 0 {return dist}
-        else {return inner_function(item_2, item_1)}
+        let diff = inner_function(item_1, item_2);
+        if diff > Self::HALF_POINT {inner_function(item_2, item_1)} else {diff}
     }
     
     pub fn get_min(&self) -> Option<([u8; N], V)>{
