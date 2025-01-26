@@ -17,6 +17,25 @@ impl<const N: usize, V: Copy> ConcurrentMapInternal<N, V> {
 
 impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     
+    pub fn get_used_percent(&self) -> f64{
+        (((size_of::<[u8; N]>() + size_of::<V>()) * self.len()) as f64) / (self.get_memory_size() as f64)
+    }
+    
+    pub fn get_memory_size(&self) -> usize{
+        size_of::<Self>() + 
+        self.0.read().map(|read_lock| {
+            match &*read_lock{
+                None => 0,
+                Some(inner) => {
+                    match inner{
+                        ConcurrentMapInternal::Item(_) => size_of::<[u8; N]>() + size_of::<V>(),
+                        ConcurrentMapInternal::List(list) => list.iter().map(|x| x.get_memory_size()).sum()
+                    }
+                }
+            }
+        }).unwrap()
+    }
+    
     const fn get_index(key: [u8; N], depth: usize) -> usize{
          (match depth % 4{
             0 => (key[depth/4] & 0b11000000) >> 6,

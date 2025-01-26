@@ -18,7 +18,7 @@ fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where Standard: Distributio
 mod limited_depth_tests{
     use concurrent_map::map::ConcurrentMap;
     use super::*;
-
+    
     #[test]
     fn length_test(){
         let expected = 10000;
@@ -127,6 +127,7 @@ mod limited_depth_tests{
                 }
                 println!("{}", ((*NO_THREADS)*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
                 assert_eq!(TRUE_COUNT.load(Ordering::Relaxed), (*NO_THREADS)*TOTAL_PER_THREAD);
+                println!("{}", GLOBAL_BST.get_used_percent());
 
                 threads = Vec::new();
                 for i in 0..(*NO_THREADS){
