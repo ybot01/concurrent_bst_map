@@ -114,19 +114,13 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                         ConcurrentMapInternal::List(list) => {
                             let index = Self::get_index(key, depth);
                             let result = list[index].get_or_closest_by_key_internal(key, include_key, depth + 1, closest);
-                            match 
-                            //when index is some then check if 
-
-                            [
-                                if index > 0 {list[index-1].get_or_closest_by_key_internal(key, include_key, depth + 1, closest)} else {None},
-                                if index < 3 {list[index+1].get_or_closest_by_key_internal(key, include_key, depth + 1, closest)} else {None},
-                            ].iter().filter_map(|x| *x).min_by_key(|x| Self::get_abs_diff(key, x.0.0))
+                            
                         }
                     }
                 }
             }
         }).unwrap();
-    }*/
+    }
 
     const HALF_POINT: [u8; N] = {
         let mut array = [0; N];
@@ -156,7 +150,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         };
         let diff = inner_function(item_1, item_2);
         if diff > Self::HALF_POINT {inner_function(item_2, item_1)} else {diff}
-    }
+    }*/
     
     pub fn get_min(&self) -> Option<([u8; N], V)>{
         self.0.read().map(|read_lock| {
@@ -270,51 +264,40 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
 
     fn remove_if_internal(&self, key: [u8; N], should_remove: &impl Fn(&V) -> bool, depth: usize){
-        //this is currently single threaded
-        //change to way that read locks unless needs to write lock once figure out how to
-        self.0.write().map(|mut write_lock| {
-            match &mut *write_lock{
-                None => (),
-                Some(inner) => {
-                    match inner{
-                        ConcurrentMapInternal::Item(item_key_value) => {
-                            if (item_key_value.0 == key) && should_remove(&item_key_value.1) {
-                                *write_lock = None;
-                            }
-                        }
-                        ConcurrentMapInternal::List(list) => {
-                            list[Self::get_index(key, depth)].remove_if_internal(key, should_remove, depth + 1);
-                            let mut list_found = false;
-                            let mut first_item = None;
-                            let mut counter = 0;
-                            while (counter < list.len()) && !list_found{
-                                list[counter].0.read().map(|inner_read_lock| {
-                                    match &*inner_read_lock{
-                                        None => (),
-                                        Some(x) => {
-                                            match x{
-                                                ConcurrentMapInternal::Item(item_key_value) => first_item.get_or_insert((item_key_value.clone(), 0)).1 += 1,
-                                                ConcurrentMapInternal::List(_) => list_found = true
-                                            }
-                                        }
-                                    }
-                                }).unwrap();
-                                counter += 1;
-                            }
-                            if !list_found {
-                                match first_item{
-                                    None => *write_lock = None,
-                                    Some(x) => {
-                                        if x.1 == 1 {
-                                            *write_lock = Some(ConcurrentMapInternal::new_item(x.0.0, x.0.1));
-                                        }
-                                    }
-                                }
+        //this currently removes the item but does not prune the lists back to where it could be
+        //add this ability in when figure out how to, using read and write locks to be more space efficient
+        loop{
+            if self.0.read().map(|read_lock| {
+                match &*read_lock{
+                    None => true,
+                    Some(inner) => {
+                        match inner{
+                            ConcurrentMapInternal::Item(_) => false, //go to write lock
+                            ConcurrentMapInternal::List(list) => {
+                                list[Self::get_index(key, depth)].remove_if_internal(key, should_remove, depth + 1);
+                                true
                             }
                         }
                     }
                 }
-            }
-        }).unwrap()
+            }).unwrap() {return}
+            
+            if self.0.write().map(|mut write_lock| {
+                match &mut *write_lock {
+                    None => true,
+                    Some(inner) => {
+                        match inner{
+                            ConcurrentMapInternal::Item(item_key_value) => {
+                                if (item_key_value.0 == key) && should_remove(&item_key_value.1) {
+                                    *write_lock = None;
+                                }
+                                true
+                            }
+                            ConcurrentMapInternal::List(_) => false //go back to read lock
+                        }
+                    }
+                }
+            }).unwrap() {return}
+        }
     }
 }

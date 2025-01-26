@@ -86,13 +86,14 @@ mod limited_depth_tests{
 
     static TRUE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-    const NO_THREADS: usize = 10;
+    const NO_THREADS: LazyLock<usize> = LazyLock::new(|| num_cpus::get());
     const TOTAL_PER_THREAD: usize = 100000;
 
-    static USER_LIST: LazyLock<RwLock<Vec<([u8; 32], u64)>>> = LazyLock::new(|| RwLock::new(get_vec_of_key_values(NO_THREADS*TOTAL_PER_THREAD)));
+    static USER_LIST: LazyLock<RwLock<Vec<([u8; 32], u64)>>> = LazyLock::new(|| RwLock::new(get_vec_of_key_values((*NO_THREADS)*TOTAL_PER_THREAD)));
 
     #[test]
     fn bench_multi_thread_insert_or_update_if_and_remove(){
+        println!("no_threads: {}", *NO_THREADS);
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -100,7 +101,7 @@ mod limited_depth_tests{
             .block_on(async {
                 _ = USER_LIST.read().unwrap().clone();
                 let mut threads= Vec::<JoinHandle<Duration>>::new();
-                for i in 0..NO_THREADS{
+                for i in 0..(*NO_THREADS){
                     threads.push(tokio::spawn(async move{
                         let start_index = TOTAL_PER_THREAD * i;
                         let start_time = SystemTime::now();
@@ -124,11 +125,11 @@ mod limited_depth_tests{
                         max_duration = duration;
                     }
                 }
-                println!("{}", (NO_THREADS*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
-                assert_eq!(TRUE_COUNT.load(Ordering::Relaxed), NO_THREADS*TOTAL_PER_THREAD);
+                println!("{}", ((*NO_THREADS)*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
+                assert_eq!(TRUE_COUNT.load(Ordering::Relaxed), (*NO_THREADS)*TOTAL_PER_THREAD);
 
                 threads = Vec::new();
-                for i in 0..NO_THREADS{
+                for i in 0..(*NO_THREADS){
                     threads.push(tokio::spawn(async move{
                         let start_index = TOTAL_PER_THREAD * i;
                         let start_time = SystemTime::now();
@@ -148,7 +149,7 @@ mod limited_depth_tests{
                         max_duration = duration;
                     }
                 }
-                println!("{}", (NO_THREADS*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
+                println!("{}", ((*NO_THREADS)*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
                 assert_eq!(GLOBAL_BST.len(), 0);
             });
     }
