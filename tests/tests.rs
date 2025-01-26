@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, RwLock};
 use std::time::{Duration, SystemTime};
 use rand::distributions::{Distribution, Standard};
-use rand::random;
+use rand::{random};
 use tokio::task::JoinHandle;
 
 fn should_update<T: Ord>(value_1: &T, value_2: &T) -> bool{
@@ -16,9 +16,9 @@ fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where Standard: Distributio
 }
 
 mod limited_depth_tests{
-    use concurrent_map::map::ConcurrentMap;
+    use concurrent_map::map_rccell::ConcurrentMap;
     use super::*;
-    
+
     #[test]
     fn length_test(){
         let expected = 10000;
@@ -82,14 +82,14 @@ mod limited_depth_tests{
         assert_eq!(true_count, total);
     }
 
-    static GLOBAL_BST: ConcurrentMap<32, u64> = ConcurrentMap::new();
+    static GLOBAL_BST: ConcurrentMap<32, [u8;32]> = ConcurrentMap::new();
 
     static TRUE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
     const NO_THREADS: LazyLock<usize> = LazyLock::new(|| num_cpus::get());
     const TOTAL_PER_THREAD: usize = 100000;
 
-    static USER_LIST: LazyLock<RwLock<Vec<([u8; 32], u64)>>> = LazyLock::new(|| RwLock::new(get_vec_of_key_values((*NO_THREADS)*TOTAL_PER_THREAD)));
+    static USER_LIST: LazyLock<RwLock<Vec<([u8; 32], [u8;32])>>> = LazyLock::new(|| RwLock::new(get_vec_of_key_values((*NO_THREADS)*TOTAL_PER_THREAD)));
 
     #[test]
     fn bench_multi_thread_insert_or_update_if_and_remove(){
@@ -127,7 +127,7 @@ mod limited_depth_tests{
                 }
                 println!("{}", ((*NO_THREADS)*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
                 assert_eq!(TRUE_COUNT.load(Ordering::Relaxed), (*NO_THREADS)*TOTAL_PER_THREAD);
-                println!("{}", GLOBAL_BST.get_used_percent());
+                println!("{} %", GLOBAL_BST.get_used_percent()*100.0);
 
                 threads = Vec::new();
                 for i in 0..(*NO_THREADS){
