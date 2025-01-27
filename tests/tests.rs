@@ -33,7 +33,7 @@ mod limited_depth_tests{
         assert_eq!(size_of::<ConcurrentMap<32, u64>>(), 24);
     }
 
-    /*#[test]
+    #[test]
     fn depth_test(){
         let bst = ConcurrentMap::<32, u64>::new();
         let mut array = [0;32];
@@ -42,8 +42,7 @@ mod limited_depth_tests{
         bst.insert_or_update(array, 0);
         println!("{}", bst.depth());
     }
-
-
+    
     #[test]
     fn remove_test(){
         let expected = 10000;
@@ -52,7 +51,7 @@ mod limited_depth_tests{
         to_insert.iter().for_each(|x| _ = bst.insert_or_update(x.0, x.1));
         to_insert.iter().for_each(|x| bst.remove(x.0));
         assert!(to_insert.iter().all(|x| bst.get(x.0).is_none()));
-    }*/
+    }
 
     #[test]
     fn should_update_test() {
@@ -65,12 +64,12 @@ mod limited_depth_tests{
         assert!(!bst.insert_or_update_if(key, value, &should_update));
     }
 
-    /*#[test]
+    #[test]
     fn insert_and_get_test() {
         let bst = ConcurrentMap::<32, u64>::new();
         _ = bst.insert_or_update([0; 32], 1);
         assert!(bst.get([0;32]).is_some_and(|x| x == 1));
-    }*/
+    }
 
     #[test]
     fn bench_insert_or_update_if(){
@@ -134,7 +133,7 @@ mod limited_depth_tests{
                 assert_eq!(TRUE_COUNT.load(Ordering::Relaxed), (*NO_THREADS)*TOTAL_PER_THREAD);
                 println!("{} %", GLOBAL_BST.get_used_percent()*100.0);
 
-                /*threads = Vec::new();
+                threads = Vec::new();
                 for i in 0..(*NO_THREADS){
                     threads.push(tokio::spawn(async move{
                         let start_index = TOTAL_PER_THREAD * i;
@@ -156,7 +155,7 @@ mod limited_depth_tests{
                     }
                 }
                 println!("{}", ((*NO_THREADS)*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
-                assert_eq!(GLOBAL_BST.len(), 0);*/
+                assert_eq!(GLOBAL_BST.len(), 0);
             });
     }
 }
