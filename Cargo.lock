@@ -67,16 +67,10 @@ name = "concurrent_map"
 version = "0.1.0"
 dependencies = [
  "num_cpus",
+ "parking_lot",
  "rand",
- "rcu_cell",
  "tokio",
 ]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.8.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
 
 [[package]]
 name = "getrandom"
@@ -246,15 +240,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom",
-]
-
-[[package]]
-name = "rcu_cell"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a51a8d6983fdaf55981d3002052f551c8580640c4dedc38c2f4dc29201ac7122"
-dependencies = [
- "crossbeam-utils",
 ]
 
 [[package]]
