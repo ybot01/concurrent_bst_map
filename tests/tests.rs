@@ -16,7 +16,7 @@ fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where Standard: Distributio
 }
 
 mod limited_depth_tests{
-    use concurrent_map::map_rccell::ConcurrentMap;
+    use concurrent_map::map_parking_lot::ConcurrentMap;
     use super::*;
 
     #[test]

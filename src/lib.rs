@@ -1,6 +1,6 @@
 pub mod map;
 pub mod bst_map;
-pub mod map_rccell;
+pub mod map_parking_lot;
 //pub mod experiment;
 
 #[allow(non_snake_case)]

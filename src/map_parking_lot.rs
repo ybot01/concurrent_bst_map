@@ -23,8 +23,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
 
     pub fn get_memory_size(&self) -> usize{
         size_of::<Self>() +
-            self.0.read().as_ref().map(|read_lock| {
-                ((usize::BITS/8) as usize) + 
+            self.0.read().as_ref().map(|read_lock| { 
                 match read_lock{
                     ConcurrentMapInternal::Item(_) => size_of::<[u8; N]>() + size_of::<V>(),
                     ConcurrentMapInternal::List(list) => list.iter().map(|x| x.get_memory_size()).sum()
