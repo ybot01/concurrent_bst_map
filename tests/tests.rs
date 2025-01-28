@@ -1,15 +1,15 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, RwLock};
 use std::time::{Duration, SystemTime};
-use rand::distributions::{Distribution, Standard};
 use rand::{random};
+use rand::distr::{Distribution, StandardUniform};
 use tokio::task::JoinHandle;
 
 fn should_update<T: Ord>(value_1: &T, value_2: &T) -> bool{
     value_2 > value_1
 }
 
-fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where Standard: Distribution<T>{
+fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where StandardUniform: Distribution<T>{
     let mut to_return = Vec::<T>::new();
     for _ in 0..length {to_return.push(random())}
     to_return

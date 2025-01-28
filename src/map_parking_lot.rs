@@ -222,9 +222,44 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
 
     fn remove_if_internal(&self, key: [u8; N], should_remove: &impl Fn(&V) -> bool, depth: usize){
-        //this currently removes the item but does not prune the lists back to where it could be
-        //add this ability in when figure out how to, using read and write locks to be more space efficient
-        loop{
+        //currently single threaded 
+        //change to multi thread that only write locks when necessary when figure out how to
+        let mut write_lock = self.0.write();
+        match &mut *write_lock{
+            ConcurrentMapInternal::Item(item_key_value) => {
+                if (item_key_value.0 == key) && should_remove(&item_key_value.1) {
+                    *write_lock = ConcurrentMapInternal::Empty;
+                }
+                return
+            }
+            ConcurrentMapInternal::List(list) => {
+                list[Self::get_index(key, depth)].remove_if_internal(key, should_remove, depth + 1);
+                for i in list.iter(){
+                    match &*i.0.read(){
+                        ConcurrentMapInternal::Item(_) => (),
+                        ConcurrentMapInternal::List(_) => return,
+                        ConcurrentMapInternal::Empty => ()
+                    }
+                }
+                let mut first_item = None;
+                for i in list.iter(){
+                    match &*i.0.read(){
+                        ConcurrentMapInternal::Item(item_key_value) => {
+                            first_item = Some(ConcurrentMapInternal::Item(Box::new((item_key_value.0, item_key_value.1))));
+                            break
+                        }
+                        ConcurrentMapInternal::List(_) => (),
+                        ConcurrentMapInternal::Empty => ()
+                    }
+                }
+                match first_item{
+                    None => *write_lock = ConcurrentMapInternal::Empty,
+                    Some(x) => *write_lock = x
+                }
+            }
+            ConcurrentMapInternal::Empty => return
+        }
+        /*loop{
             match &*self.0.read(){
                 ConcurrentMapInternal::Item(_) => (), //go to write lock
                 ConcurrentMapInternal::List(list) => {
@@ -244,6 +279,6 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                 ConcurrentMapInternal::List(_) => (), //change back to read lock
                 ConcurrentMapInternal::Empty => return
             }
-        }
+        }*/
     }
 }

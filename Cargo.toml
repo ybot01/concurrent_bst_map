@@ -9,17 +9,11 @@ lto = "fat"
 panic = "abort"
 strip = "symbols"
 
-[profile.test]
-codegen-units = 1
-lto = "fat"
-panic = "abort"
-strip = "symbols"
-
 [dependencies]
 parking_lot = { version = "0.12.3" }
 
 [dev-dependencies]
 tokio = { version = "1.43.0", features = ["full"] }
-rand = { version = "0.8.5" }
+rand = { version = "0.9.0" }
 num_cpus = { version = "1.16.0" }
 
