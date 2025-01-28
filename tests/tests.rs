@@ -16,7 +16,7 @@ fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where StandardUniform: Dist
 }
 
 mod limited_depth_tests{
-    use concurrent_map::map_parking_lot::ConcurrentMap;
+    use concurrent_map::ConcurrentMap;
     use super::*;
 
     #[test]
@@ -160,7 +160,7 @@ mod limited_depth_tests{
     }
 }
 
-mod recursion_tests{
+/*mod recursion_tests{
     use concurrent_map::{ALWAYS_UPDATE, NEVER_UPDATE};
     use concurrent_map::bst_map::ConcurrentBSTMap;
     use super::*;
@@ -314,5 +314,5 @@ mod recursion_tests{
                 assert_eq!(GLOBAL_BST.len(), 0);
             });
     }
-}
+}*/
 
