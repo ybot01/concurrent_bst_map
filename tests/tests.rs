@@ -16,6 +16,7 @@ fn get_vec_of_key_values<T>(length: usize) -> Vec<T> where StandardUniform: Dist
 }
 
 mod limited_depth_tests{
+    use rand::random_range;
     use concurrent_map::ConcurrentMap;
     use super::*;
 
@@ -104,7 +105,7 @@ mod limited_depth_tests{
     static USER_LIST: LazyLock<RwLock<Vec<([u8; 32], [u8;32])>>> = LazyLock::new(|| RwLock::new(get_vec_of_key_values((*NO_THREADS)*TOTAL_PER_THREAD)));
 
     #[test]
-    fn bench_multi_thread_insert_or_update_if_and_remove(){
+    fn bench_multi_thread(){
         println!("no_threads: {}", *NO_THREADS);
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
@@ -140,6 +141,27 @@ mod limited_depth_tests{
                 println!("{}", ((*NO_THREADS)*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
                 assert_eq!(TRUE_COUNT.load(Ordering::Relaxed), (*NO_THREADS)*TOTAL_PER_THREAD);
                 println!("{} %", GLOBAL_BST.get_used_percent()*100.0);
+
+                threads = Vec::new();
+                let rand_key = USER_LIST.read().unwrap()[random_range(0..USER_LIST.read().unwrap().len())].0;
+                for _ in 0..(*NO_THREADS){
+                    threads.push(tokio::spawn(async move{
+                        let start_time = SystemTime::now();
+                        for _ in 0..TOTAL_PER_THREAD{
+                            _ = GLOBAL_BST.get_or_closest_by_key(rand_key, false);
+                        }
+                        SystemTime::now().duration_since(start_time).unwrap()
+                    }))
+                }
+                while threads.iter().any(|x| !x.is_finished()) {}
+                max_duration = Duration::ZERO;
+                for i in threads{
+                    duration = i.await.unwrap();
+                    if duration > max_duration{
+                        max_duration = duration;
+                    }
+                }
+                println!("{}", ((*NO_THREADS)*TOTAL_PER_THREAD) as f64 / max_duration.as_secs_f64());
 
                 threads = Vec::new();
                 for i in 0..(*NO_THREADS){
