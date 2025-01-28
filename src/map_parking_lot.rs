@@ -222,7 +222,7 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
     }
 
     fn remove_if_internal(&self, key: [u8; N], should_remove: &impl Fn(&V) -> bool, depth: usize){
-        //currently single threaded 
+        //currently single threaded
         //change to multi thread that only write locks when necessary when figure out how to
         let mut write_lock = self.0.write();
         match &mut *write_lock{
