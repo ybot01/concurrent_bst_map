@@ -72,6 +72,14 @@ mod limited_depth_tests{
     }
 
     #[test]
+    fn get_closest_test() {
+        let bst = ConcurrentMap::<32, u64>::new();
+        _ = bst.insert_or_update([0; 32], 1);
+        _ = bst.insert_or_update([3; 32], 1);
+        assert!(bst.get_or_closest_by_key([2;32], true).is_some_and(|x| x.0 == [3;32]));
+    }
+
+    #[test]
     fn bench_insert_or_update_if(){
         let bst = ConcurrentMap::<32, u64>::new();
         let (key, mut value) = ([0; 32], 0);
