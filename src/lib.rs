@@ -109,14 +109,10 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                         None => (),
                         Some(left_item_key_value) => {
                             left = true;
-                            match min{
-                                None => min = Some(left_item_key_value),
-                                Some(item_key_value) => {
-                                    if Self::get_abs_diff(key, left_item_key_value.0) < Self::get_abs_diff(key, item_key_value.0){
-                                        min = Some(left_item_key_value);
-                                    }
-                                }
-                            }
+                            min = [
+                                min,
+                                Some(left_item_key_value)
+                            ].iter().filter_map(|x| *x).min_by_key(|x| Self::get_abs_diff(key, x.0));
                         }
                     }
                 }
@@ -125,14 +121,10 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                         None => (),
                         Some(right_item_key_value) => {
                             right = true;
-                            match min{
-                                None => min = Some(right_item_key_value),
-                                Some(item_key_value) => {
-                                    if Self::get_abs_diff(key, right_item_key_value.0) < Self::get_abs_diff(key, item_key_value.0){
-                                        min = Some(right_item_key_value);
-                                    }
-                                }
-                            }
+                            min = [
+                                min,
+                                Some(right_item_key_value)
+                            ].iter().filter_map(|x| *x).min_by_key(|x| Self::get_abs_diff(key, x.0));
                         }
                     }
                 }
