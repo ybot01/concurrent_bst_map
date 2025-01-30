@@ -1,5 +1,5 @@
 A concurrent map written in rust with generic value type and byte array key\
-Also a concurrent set which is a wrapper around the map
+Also a concurrent set which is a wrapper around the map\
 Implemented using recursive RwLocks, read locks unless absolutely neccesary to write lock to maximise multi thread performance\
 Currently the value must implement Copy\
 Rule is to minimise dependencies, currently only has single dependency for parking lot to use their rwlock as is 8 bytes Vs std rwlock 16 bytes so reduces overhead
