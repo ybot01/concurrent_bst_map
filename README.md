@@ -8,4 +8,4 @@ Motivation is I need a multi threaded data structure of key-values in which it i
 Was previously using Dashmap library (https://github.com/xacrimon/dashmap) in which it is fast ~O(1) to find a key but best case O(N) time to find nearest key\
 With this map should be best case O(log(N)) for both
 
-I'd appreciate pull requests or suggestions for improvement, especially for how to reduce the overhead. for 32 byte key and 32 bytes value overhead is currently around 50%
+I'd appreciate pull requests or suggestions for improvement, especially for how to reduce the overhead. for 32 byte key and 32 bytes value, overhead % is ≈50%
