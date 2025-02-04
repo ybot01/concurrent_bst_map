@@ -75,9 +75,11 @@ mod limited_depth_tests{
     #[test]
     fn get_closest_test() {
         let bst = ConcurrentMap::<32, u64>::new();
-        _ = bst.insert_or_update([0; 32], 1);
-        _ = bst.insert_or_update([3; 32], 1);
-        assert!(bst.get_or_closest_by_key([2;32], true).is_some_and(|x| x.0 == [3;32]));
+        _ = bst.insert_or_update([255; 32], 1);
+        _ = bst.insert_or_update([254; 32], 1);
+        //_ = bst.insert_or_update([0; 32], 1);
+        _ = bst.insert_or_update([1; 32], 1);
+        assert!(bst.get_or_closest_by_key([0;32], true, true).is_some_and(|x| x.0 == [255;32]));
     }
 
     #[test]
@@ -148,7 +150,7 @@ mod limited_depth_tests{
                     threads.push(tokio::spawn(async move{
                         let start_time = SystemTime::now();
                         for _ in 0..TOTAL_PER_THREAD{
-                            _ = GLOBAL_BST.get_or_closest_by_key(rand_key, false);
+                            _ = GLOBAL_BST.get_or_closest_by_key(rand_key, false, true);
                         }
                         SystemTime::now().duration_since(start_time).unwrap()
                     }))

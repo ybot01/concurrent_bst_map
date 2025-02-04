@@ -88,8 +88,15 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         }
     }
 
-    pub fn get_or_closest_by_key(&self, key: [u8; N], include_key: bool) -> Option<([u8; N], V)>{
-        self.get_or_closest_by_key_internal(key, include_key, 0, None).0
+    pub fn get_or_closest_by_key(&self, key: [u8; N], include_key: bool, loop_around: bool) -> Option<([u8; N], V)>{
+        let (result, found_left, found_right) = self.get_or_closest_by_key_internal(key, include_key, 0, None);
+        if !loop_around || (found_left == found_right) {result}
+        else if !found_left{
+            [result, self.get_max()].iter().filter_map(|x| *x).min_by_key(|x| Self::get_abs_diff(key, x.0))
+        }
+        else{
+            [result, self.get_min()].iter().filter_map(|x| *x).min_by_key(|x| Self::get_abs_diff(key, x.0))
+        }
     }
 
     fn get_or_closest_by_key_internal(&self, key: [u8; N], include_key: bool, depth: usize, closest: Option<([u8; N], V)>) -> (Option<([u8; N], V)>, bool, bool){
@@ -105,30 +112,35 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                 let index = Self::get_index(key, depth);
                 let (mut min, mut left, mut right) = list[index].get_or_closest_by_key_internal(key, include_key, depth + 1, closest);
                 if !left && (index > 0){
-                    match list[index-1].get_max(){ 
-                        None => (),
-                        Some(left_item_key_value) => {
-                            left = true;
-                            min = [
-                                min,
-                                Some(left_item_key_value)
-                            ].iter().filter_map(|x| *x).min_by_key(|x| Self::get_abs_diff(key, x.0));
+                    for i in (0..(index-1)).rev(){
+                        match list[i].get_max(){
+                            None => (),
+                            Some(left_item_key_value) => {
+                                left = true;
+                                min = [
+                                    min,
+                                    Some(left_item_key_value)
+                                ].iter().filter_map(|x| *x).min_by_key(|x| Self::get_abs_diff(key, x.0));
+                                break;
+                            }
                         }
                     }
                 }
-                if !right && (index < (list.len() - 1)){
-                    match list[index+1].get_min(){
-                        None => (),
-                        Some(right_item_key_value) => {
-                            right = true;
-                            min = [
-                                min,
-                                Some(right_item_key_value)
-                            ].iter().filter_map(|x| *x).min_by_key(|x| Self::get_abs_diff(key, x.0));
+                if !right && ((index+1) < list.len()){
+                    for i in (index+1)..list.len(){
+                        match list[i].get_min(){
+                            None => (),
+                            Some(right_item_key_value) => {
+                                right = true;
+                                min = [
+                                    min,
+                                    Some(right_item_key_value)
+                                ].iter().filter_map(|x| *x).min_by_key(|x| Self::get_abs_diff(key, x.0));
+                                break;
+                            }
                         }
                     }
                 }
-                
                 (min, left, right)
             }
             ConcurrentMapInternal::Empty => (None, false, false)
