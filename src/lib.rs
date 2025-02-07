@@ -25,6 +25,12 @@ impl<const N: usize, V: Copy> ConcurrentMapInternal<N, V> {
     }
 }
 
+pub enum InsertOrUpdateResult{
+    Inserted,
+    Updated,
+    Neither
+}
+
 impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
 
     pub fn get_used_percent(&self) -> f64{
@@ -193,15 +199,15 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
         }
     }
 
-    pub fn insert_or_update(&self, key: [u8; N], value: V) -> bool{
+    pub fn insert_or_update(&self, key: [u8; N], value: V) -> InsertOrUpdateResult{
         self.insert_or_update_if(key, value, &|_,_| true)
     }
 
-    pub fn insert_or_update_if(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool) -> bool{
+    pub fn insert_or_update_if(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool) -> InsertOrUpdateResult{
         self.insert_or_update_if_internal(key, value, should_update, 0)
     }
 
-    fn insert_or_update_if_internal(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool, depth: usize) -> bool{
+    fn insert_or_update_if_internal(&self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool, depth: usize) -> InsertOrUpdateResult{
         loop{
             match &*self.0.read(){
                 ConcurrentMapInternal::Item(_) => (), //change to write_lock
@@ -215,20 +221,20 @@ impl<const N: usize, V: Copy> ConcurrentMap<N, V>{
                         //update
                         if should_update(&item_key_value.1, &value){
                             item_key_value.1 = value;
-                            true
+                            InsertOrUpdateResult::Updated
                         }
-                        else {false}
+                        else {InsertOrUpdateResult::Neither}
                     }
                     else{
                         //insert and restructure
                         *write_lock = Self::deepen_tree((item_key_value.0, item_key_value.1), (key, value), depth);
-                        true
+                        InsertOrUpdateResult::Inserted
                     }
                 }
                 ConcurrentMapInternal::List(_) => (), //change back to read lock
                 ConcurrentMapInternal::Empty => {
                     *write_lock = ConcurrentMapInternal::new_item(key, value);
-                    return true;
+                    return InsertOrUpdateResult::Inserted
                 }
             }
         }
