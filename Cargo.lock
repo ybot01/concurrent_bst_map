@@ -63,16 +63,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
-name = "concurrent_map"
-version = "0.1.0"
-dependencies = [
- "num_cpus",
- "parking_lot",
- "rand",
- "tokio",
-]
-
-[[package]]
 name = "getrandom"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -251,6 +241,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "03a862b389f93e68874fbf580b9de08dd02facb9a788ebadaf4a3fd33cf58834"
 dependencies = [
  "bitflags",
+]
+
+[[package]]
+name = "rust_map"
+version = "0.1.0"
+dependencies = [
+ "num_cpus",
+ "parking_lot",
+ "rand",
+ "tokio",
 ]
 
 [[package]]
