@@ -76,6 +76,32 @@ impl<const N: usize, V: Copy> Map<N, V>{
         }
     }
 
+    pub fn get_or_closest_by_key_leading_zeroes(&self, key: [u8; N], include_key: bool) -> Option<([u8; N], V)>{
+        self.get_or_closest_by_key_leading_zeroes_internal(key, include_key, 0)
+    }
+
+    fn get_or_closest_by_key_leading_zeroes_internal(&self, key: [u8; N], include_key: bool, depth: usize) -> Option<([u8; N], V)>{
+        match &*self.0.read(){
+            MapInternal::Item(item_key_value) => {
+                if (item_key_value.0 != key) || include_key {Some((item_key_value.0, item_key_value.1))} else {None}
+            }
+            MapInternal::List(list) => {
+                let index = get_index(key, depth);
+                match index{
+                    0 => [0,1,2,3],
+                    1 => [1,0,2,3],
+                    2 => [2,3,1,0],
+                    _ => [3,2,1,0]
+                }.iter().find_map(|i| {
+                    if *i == index {list[*i].get_or_closest_by_key_leading_zeroes_internal(key, include_key, depth + 1)}
+                    else if *i < index {list[*i].get_max()}
+                    else {list[*i].get_min()}
+                })
+            }
+            MapInternal::Empty => None
+        }
+    }
+
     pub fn get_or_closest_by_key(&self, key: [u8; N], include_key: bool, loop_around: bool) -> Option<([u8; N], V)>{
         let (result, found_left, found_right) = self.get_or_closest_by_key_internal(key, include_key, 0, None);
         if !loop_around || (found_left == found_right) {result}

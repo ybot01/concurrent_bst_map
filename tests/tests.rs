@@ -260,6 +260,19 @@ mod non_concurrent_tests{
     }
 
     #[test]
+    fn get_closest_by_key_leading_zeroes_test(){
+        let map = rust_map::concurrent::Map::<32, u64>::new();
+        let mut key = [255; 32];
+        key[0] = 0;
+        _ = map.insert_or_update(key, 1);
+        key = [0; 32];
+        key[0] = 1;
+        key[key.len()-1] = u8::MAX;
+        _ = map.insert_or_update(key, 1);
+        assert!(map.get_or_closest_by_key_leading_zeroes([1;32], true).is_some_and(|x| x.0 == key));
+    }
+
+    #[test]
     fn bench(){
         let mut map = Map::<32, u64>::new();
         let mut key = [0; 32];
