@@ -1,5 +1,5 @@
 use parking_lot::RwLock;
-use crate::InsertOrUpdateResult;
+use crate::{get_index, InsertOrUpdateResult};
 
 #[derive(Debug)]
 pub struct Map<const N: usize, V>(RwLock<MapInternal<N, V>>);
@@ -30,10 +30,6 @@ impl<const N: usize, V: Copy> Map<N, V>{
                 MapInternal::List(list) => list.iter().map(|x| x.get_memory_size()).sum(),
                 MapInternal::Empty => 0
             }
-    }
-
-    const fn get_index(key: [u8; N], depth: usize) -> usize{
-        ((key[depth/4] >> (6-((depth % 4) * 2))) & 0b00000011) as usize
     }
 
     pub fn is_empty(&self) -> bool{
@@ -75,7 +71,7 @@ impl<const N: usize, V: Copy> Map<N, V>{
     fn get_internal(&self, key: [u8; N], depth: usize) -> Option<V>{
         match &*self.0.read(){
             MapInternal::Item(item) => if item.0 == key {Some(item.1)} else {None},
-            MapInternal::List(list) => list[Self::get_index(key, depth)].get_internal(key, depth + 1),
+            MapInternal::List(list) => list[get_index(key, depth)].get_internal(key, depth + 1),
             MapInternal::Empty => None
         }
     }
@@ -101,7 +97,7 @@ impl<const N: usize, V: Copy> Map<N, V>{
                 (if (item_key_value.0 != key) || include_key {Some((item_key_value.0, item_key_value.1))} else {None}, false, false)
             }
             MapInternal::List(list) => {
-                let index = Self::get_index(key, depth);
+                let index = get_index(key, depth);
                 let (mut min, mut left, mut right) = list[index].get_or_closest_by_key_internal(key, include_key, depth + 1, closest);
                 if !left && (index > 0){
                     for i in (0..(index-1)).rev(){
@@ -197,7 +193,7 @@ impl<const N: usize, V: Copy> Map<N, V>{
         loop{
             match &*self.0.read(){
                 MapInternal::Item(_) => (), //change to write_lock
-                MapInternal::List(list) => return list[Self::get_index(key, depth)].insert_or_update_if_internal(key, value, should_update, depth + 1),
+                MapInternal::List(list) => return list[get_index(key, depth)].insert_or_update_if_internal(key, value, should_update, depth + 1),
                 MapInternal::Empty => () //change to write lock
             }
             let mut write_lock = self.0.write();
@@ -227,8 +223,8 @@ impl<const N: usize, V: Copy> Map<N, V>{
     }
 
     fn deepen_tree(item_1: ([u8; N], V), item_2: ([u8; N], V), depth: usize) -> MapInternal<N, V> {
-        let item_1_index = Self::get_index(item_1.0, depth);
-        let item_2_index = Self::get_index(item_2.0, depth);
+        let item_1_index = get_index(item_1.0, depth);
+        let item_2_index = get_index(item_2.0, depth);
         let new_list = [const {Self::new()}; 4];
         if item_1_index == item_2_index {
             *new_list[item_1_index].0.write() = Self::deepen_tree(item_1, item_2, depth + 1);
@@ -252,7 +248,7 @@ impl<const N: usize, V: Copy> Map<N, V>{
 
         let result = match &*self.0.read(){
             MapInternal::Item(_) => (false, true),
-            MapInternal::List(list) => list[Self::get_index(key, depth)].remove_if_internal(key, should_remove, depth + 1),
+            MapInternal::List(list) => list[get_index(key, depth)].remove_if_internal(key, should_remove, depth + 1),
             MapInternal::Empty => (false, true)
         };
         let mut write_lock = self.0.write();

@@ -13,3 +13,7 @@ pub enum InsertOrUpdateResult{
     Updated,
     Neither
 }
+
+const fn get_index<const N: usize>(key: [u8; N], depth: usize) -> usize{
+    ((key[depth/4] >> (6-((depth % 4) * 2))) & 0b00000011) as usize
+}
