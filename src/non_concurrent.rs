@@ -1,9 +1,9 @@
 use crate::{get_index, InsertOrUpdateResult};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Map<const N: usize, V>(MapInternal<N, V>);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum MapInternal<const N: usize, V>{
     Item(Box<([u8; N], V)>),
     List(Box<[Map<N, V>; 4]>),
