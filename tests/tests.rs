@@ -200,6 +200,7 @@ mod non_concurrent_tests{
     #[test]
     fn length_test(){
         let expected = 10000;
+
         let mut map = Map::<32, u64>::new();
         get_vec_of_key_values::<([u8; 32],u64)>(expected).iter()
             .for_each(|x| _ = map.insert_or_update(x.0, x.1));
@@ -274,7 +275,7 @@ mod non_concurrent_tests{
 
     #[test]
     fn bench(){
-        let mut map = Map::<32, u64>::Empty;
+        let mut map = Map::<32, u64>::new();
         let mut key = [0; 32];
         let mut true_count = 0;
         let total = 1000000;
