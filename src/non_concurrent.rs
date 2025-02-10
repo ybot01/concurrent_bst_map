@@ -1,16 +1,13 @@
 use crate::{get_index, InsertOrUpdateResult};
 
-#[derive(Debug)]
-pub struct Map<const N: usize, V>(MapInternal<N, V>);
-
-#[derive(Debug)]
-enum MapInternal<const N: usize, V>{
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Map<const N: usize, V>{
     Item(Box<([u8; N], V)>),
     List(Box<[Map<N, V>; 4]>),
     Empty
 }
 
-impl<const N: usize, V: Copy> MapInternal<N, V> {
+impl<const N: usize, V: Copy> Map<N, V> {
     fn new_item(key: [u8; N], value: V) -> Self{
         Self::Item(Box::new((key, value)))
     }
@@ -24,43 +21,43 @@ impl<const N: usize, V: Copy> Map<N, V>{
 
     pub fn get_memory_size(&self) -> usize{
         size_of::<Self>() +
-            match &self.0 {
-                MapInternal::Item(_) => size_of::<[u8; N]>() + size_of::<V>(),
-                MapInternal::List(list) => list.iter().map(|x| x.get_memory_size()).sum(),
-                MapInternal::Empty => 0
+            match self {
+                Map::Item(_) => size_of::<[u8; N]>() + size_of::<V>(),
+                Map::List(list) => list.iter().map(|x| x.get_memory_size()).sum(),
+                Map::Empty => 0
             }
     }
 
     pub fn is_empty(&self) -> bool{
-        match &self.0{
-            MapInternal::Item(_) => false,
-            MapInternal::List(list) => list.iter().all(|x| x.is_empty()),
-            MapInternal::Empty => true
+        match self{
+            Map::Item(_) => false,
+            Map::List(list) => list.iter().all(|x| x.is_empty()),
+            Map::Empty => true
         }
     }
 
     pub fn depth(&self) -> usize{
-        match &self.0{
-            MapInternal::Item(_) => 1,
-            MapInternal::List(list) => 1 + list.iter().map(|x| x.depth()).max().unwrap(),
-            MapInternal::Empty => 0
+        match self{
+            Map::Item(_) => 1,
+            Map::List(list) => 1 + list.iter().map(|x| x.depth()).max().unwrap(),
+            Map::Empty => 0
         }
     }
 
     pub fn len(&self) -> usize{
-        match &self.0{
-            MapInternal::Item(_) => 1,
-            MapInternal::List(list) => list.iter().map(|x| x.len()).sum(),
-            MapInternal::Empty => 0
+        match self{
+            Map::Item(_) => 1,
+            Map::List(list) => list.iter().map(|x| x.len()).sum(),
+            Map::Empty => 0
         }
     }
 
     pub const fn new() -> Self{
-        Self(MapInternal::Empty)
+        Self::Empty
     }
 
     pub fn clear(&mut self){ 
-        self.0 = MapInternal::Empty;
+        *self = Map::Empty;
     }
 
     pub fn get(&self, key: [u8; N]) -> Option<V>{
@@ -68,10 +65,10 @@ impl<const N: usize, V: Copy> Map<N, V>{
     }
 
     fn get_internal(&self, key: [u8; N], depth: usize) -> Option<V>{
-        match &self.0{
-            MapInternal::Item(item) => if item.0 == key {Some(item.1)} else {None},
-            MapInternal::List(list) => list[get_index(key, depth)].get_internal(key, depth + 1),
-            MapInternal::Empty => None
+        match self{
+            Map::Item(item) => if item.0 == key {Some(item.1)} else {None},
+            Map::List(list) => list[get_index(key, depth)].get_internal(key, depth + 1),
+            Map::Empty => None
         }
     }
 
@@ -80,24 +77,23 @@ impl<const N: usize, V: Copy> Map<N, V>{
     }
     
     fn get_or_closest_by_key_leading_zeroes_internal(&self, key: [u8; N], include_key: bool, depth: usize) -> Option<([u8; N], V)>{
-        match &self.0{
-            MapInternal::Item(item_key_value) => {
+        match self{
+            Map::Item(item_key_value) => {
                 if (item_key_value.0 != key) || include_key {Some((item_key_value.0, item_key_value.1))} else {None}
             }
-            MapInternal::List(list) => {
+            Map::List(list) => {
                 let index = get_index(key, depth);
-                match index{
-                    0 => [0,1,2,3],
-                    1 => [1,0,2,3],
-                    2 => [2,3,1,0],
-                    _ => [3,2,1,0]
-                }.iter().find_map(|i| {
-                    if *i == index {list[*i].get_or_closest_by_key_leading_zeroes_internal(key, include_key, depth + 1)}
-                    else if *i < index {list[*i].get_max()}
-                    else {list[*i].get_min()}
-                })
+                list[index].get_or_closest_by_key_leading_zeroes_internal(key, include_key, depth + 1)
+                .or(
+                    match index{
+                        0 => [1,2,3],
+                        1 => [0,2,3],
+                        2 => [3,1,0],
+                        _ => [2,1,0]
+                    }.iter().find_map(|i| list[*i].get_max())
+                )
             }
-            MapInternal::Empty => None
+            Map::Empty => None
         }
     }
 
@@ -117,11 +113,11 @@ impl<const N: usize, V: Copy> Map<N, V>{
         //if key is there and include key is true, return
         //if above is false then go up and down the right hand side of left index in list and left hand side of right index
         //if no left or right index then need to go up until there is one
-        match &self.0{
-            MapInternal::Item(item_key_value) => {
+        match self{
+            Map::Item(item_key_value) => {
                 (if (item_key_value.0 != key) || include_key {Some((item_key_value.0, item_key_value.1))} else {None}, false, false)
             }
-            MapInternal::List(list) => {
+            Map::List(list) => {
                 let index = get_index(key, depth);
                 let (mut min, mut left, mut right) = list[index].get_or_closest_by_key_internal(key, include_key, depth + 1, closest);
                 if !left{
@@ -156,7 +152,7 @@ impl<const N: usize, V: Copy> Map<N, V>{
                 }
                 (min, left, right)
             }
-            MapInternal::Empty => (None, false, false)
+            Map::Empty => (None, false, false)
         }
     }
 
@@ -191,18 +187,18 @@ impl<const N: usize, V: Copy> Map<N, V>{
     }
 
     pub fn get_min(&self) -> Option<([u8; N], V)>{
-        match &self.0{
-            MapInternal::Item(item_key_value) => Some((item_key_value.0, item_key_value.1)),
-            MapInternal::List(list) => list.iter().find_map(|x| x.get_min()),
-            MapInternal::Empty => None
+        match self{
+            Map::Item(item_key_value) => Some((item_key_value.0, item_key_value.1)),
+            Map::List(list) => list.iter().find_map(|x| x.get_min()),
+            Map::Empty => None
         }
     }
 
     pub fn get_max(&self) -> Option<([u8; N], V)>{
-        match &self.0{
-            MapInternal::Item(item_key_value) => Some((item_key_value.0, item_key_value.1)),
-            MapInternal::List(list) => list.iter().rev().find_map(|x| x.get_max()),
-            MapInternal::Empty => None
+        match self{
+            Map::Item(item_key_value) => Some((item_key_value.0, item_key_value.1)),
+            Map::List(list) => list.iter().rev().find_map(|x| x.get_max()),
+            Map::Empty => None
         }
     }
 
@@ -215,8 +211,8 @@ impl<const N: usize, V: Copy> Map<N, V>{
     }
 
     fn insert_or_update_if_internal(&mut self, key: [u8; N], value: V, should_update: &impl Fn(&V, &V) -> bool, depth: usize) -> InsertOrUpdateResult{
-        match &mut self.0{
-            MapInternal::Item(item_key_value) => {
+        match self{
+            Map::Item(item_key_value) => {
                 if item_key_value.0 == key{
                     //update
                     if should_update(&item_key_value.1, &value){
@@ -227,30 +223,30 @@ impl<const N: usize, V: Copy> Map<N, V>{
                 }
                 else{
                     //insert and restructure
-                    self.0 = Self::deepen_tree((item_key_value.0, item_key_value.1), (key, value), depth);
+                    *self = Self::deepen_tree((item_key_value.0, item_key_value.1), (key, value), depth);
                     InsertOrUpdateResult::Inserted
                 }
             }
-            MapInternal::List(list) => list[get_index(key, depth)].insert_or_update_if_internal(key, value, should_update, depth + 1),
-            MapInternal::Empty => {
-                self.0 = MapInternal::new_item(key, value);
+            Map::List(list) => list[get_index(key, depth)].insert_or_update_if_internal(key, value, should_update, depth + 1),
+            Map::Empty => {
+                *self = Map::new_item(key, value);
                 InsertOrUpdateResult::Inserted
             }
         }
     }
 
-    fn deepen_tree(item_1: ([u8; N], V), item_2: ([u8; N], V), depth: usize) -> MapInternal<N, V> {
+    fn deepen_tree(item_1: ([u8; N], V), item_2: ([u8; N], V), depth: usize) -> Map<N, V> {
         let item_1_index = get_index(item_1.0, depth);
         let item_2_index = get_index(item_2.0, depth);
         let mut new_list = [const {Self::new()}; 4];
         if item_1_index == item_2_index {
-            new_list[item_1_index].0 = Self::deepen_tree(item_1, item_2, depth + 1);
+            new_list[item_1_index] = Self::deepen_tree(item_1, item_2, depth + 1);
         }
         else{
-            new_list[item_1_index].0 = MapInternal::new_item(item_1.0, item_1.1);
-            new_list[item_2_index].0 = MapInternal::new_item(item_2.0, item_2.1);
+            new_list[item_1_index] = Map::new_item(item_1.0, item_1.1);
+            new_list[item_2_index] = Map::new_item(item_2.0, item_2.1);
         }
-        MapInternal::List(Box::new(new_list))
+        Map::List(Box::new(new_list))
     }
 
     pub fn remove(&mut self, key: [u8; N]){
@@ -262,38 +258,38 @@ impl<const N: usize, V: Copy> Map<N, V>{
     }
 
     fn remove_if_internal(&mut self, key: [u8; N], should_remove: &impl Fn(&V) -> bool, depth: usize) -> bool{
-        match &mut self.0{
-            MapInternal::Item(item_key_value) => {
+        match self{
+            Map::Item(item_key_value) => {
                 if (item_key_value.0 == key) && should_remove(&item_key_value.1) {
-                    self.0 = MapInternal::Empty;
+                    *self = Map::Empty;
                     true
                 }
                 else {false}
             }
-            MapInternal::List(list) => {
+            Map::List(list) => {
                 let removed = list[get_index(key, depth)].remove_if_internal(key, should_remove, depth + 1);
                 let mut item_count = 0;
                 if list.iter().all(|x| {
-                    match &x.0{
-                        MapInternal::Item(_) => {
+                    match x{
+                        Map::Item(_) => {
                             item_count += 1;
                             true
                         },
-                        MapInternal::List(_) => false,
-                        MapInternal::Empty => true
+                        Map::List(_) => false,
+                        Map::Empty => true
                     }
                 }) && (item_count <= 1){
-                    self.0 = list.iter().find_map(|x| {
-                        match &x.0 {
-                            MapInternal::Item(item_key_value) => Some(MapInternal::new_item(item_key_value.0, item_key_value.1)),
-                            MapInternal::List(_) => None,
-                            MapInternal::Empty => None
+                    *self = list.iter().find_map(|x| {
+                        match x {
+                            Map::Item(item_key_value) => Some(Map::new_item(item_key_value.0, item_key_value.1)),
+                            Map::List(_) => None,
+                            Map::Empty => None
                         }
-                    }).unwrap_or(MapInternal::Empty)
+                    }).unwrap_or(Map::Empty)
                 }
                 removed
             },
-            MapInternal::Empty => false
+            Map::Empty => false
         }
     }
 }

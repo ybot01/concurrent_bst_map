@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, RwLock};
 use std::time::{Duration, SystemTime};
-use rand::{random};
+use rand::random;
 use rand::distr::{Distribution, StandardUniform};
 use tokio::task::JoinHandle;
 use rand::random_range;
@@ -274,7 +274,7 @@ mod non_concurrent_tests{
 
     #[test]
     fn bench(){
-        let mut map = Map::<32, u64>::new();
+        let mut map = Map::<32, u64>::Empty;
         let mut key = [0; 32];
         let mut true_count = 0;
         let total = 1000000;
